@@ -16,66 +16,45 @@
 
 <br/><br/>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&size=18&duration=3000&pause=1000&color=00D4FF&center=true&vCenter=true&multiline=true&width=600&height=80&lines=Real-time+Telegram+keyword+monitoring;Zero+SSH+after+first+deploy;Full+ChatOps+control+from+your+phone"/>
-  <img src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&size=18&duration=3000&pause=1000&color=00D4FF&center=true&vCenter=true&multiline=true&width=600&height=80&lines=Real-time+Telegram+keyword+monitoring;Zero+SSH+after+first+deploy;Full+ChatOps+control+from+your+phone"/>
-</picture>
+**实时监控 Telegram 群组关键词，命中即推送告警。**  
+**部署一次，此后全靠手机管理，永不需要再登服务器。**
 
-<br/><br/>
+<br/>
 
-[**快速开始**](#-快速开始) &nbsp;·&nbsp; [**功能特性**](#-功能特性) &nbsp;·&nbsp; [**ChatOps**](#-chatops-指令参考) &nbsp;·&nbsp; [**配置**](#-配置参考) &nbsp;·&nbsp; [**卸载**](#-卸载)
+[快速安装](#-快速安装) · [使用流程](#-使用流程) · [ChatOps 指令](#-chatops-指令) · [配置](#-配置文件)
 
 </div>
 
-<br/>
+---
 
-## 📡 项目简介
-
-**TG-Radar** 是一款运行在 Linux 服务器上的 Telegram 群组关键词情报监控系统。
-
-通过 Telegram 自身的 MTProto 协议接入，实时扫描指定群组和频道的消息流。关键词命中后立即推送结构化告警卡片，并附带消息直达链接。**首次部署完成后，所有后续操作均可通过 Telegram 指令远程完成，无需再次登录服务器。**
-
-<br/>
-
-## ✦ 功能特性
+## ✦ 核心特性
 
 <table>
 <tr>
-<td valign="top" width="33%">
+<td width="50%" valign="top">
 
-### 🎯 精准监控
-- 正则表达式规则引擎
-- 支持多分组同时监控
-- 物理拦截 Bot 消息
-- 命中即推送，延迟 < 1s
+**🎯 实时关键词监控**  
+正则表达式规则引擎，支持多分组同时监控，物理拦截 Bot 消息，命中延迟 < 1s。
 
-</td>
-<td valign="top" width="33%">
-
-### 📱 ChatOps 管理
-- 无需 SSH，手机即可管理
-- 告警频道直接发送指令
-- 14 条完整指令覆盖全场景
-- 分组名支持模糊匹配
+**📱 ChatOps 管理**  
+在告警频道或 Saved Messages 发送指令即可管理。指令触发后消息**原地编辑**为结果，聊天界面保持整洁。
 
 </td>
-<td valign="top" width="34%">
+<td width="50%" valign="top">
 
-### 🔄 自愈同步
-- 定时从云端拉取分组结构
-- 自动处理改名 / 新增 / 删除
-- 联动更新规则名称
-- 原子写入防止配置损坏
+**🔄 自愈同步引擎**  
+定时从 Telegram 云端拉取分组结构，自动处理改名 / 新增 / 删除，联动更新规则名称。
+
+**🔔 智能更新检测**  
+每次执行 `TGR` 时静默检查版本。有新版本直接进入更新引导；已是最新则无任何额外交互，直接进菜单。
 
 </td>
 </tr>
 </table>
 
-<br/>
+---
 
-## ⚡ 快速开始
-
-### 一键安装
+## ⚡ 快速安装
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/chenmo8848/TG-Radar/main/install.sh)
@@ -83,91 +62,74 @@ bash <(curl -fsSL https://raw.githubusercontent.com/chenmo8848/TG-Radar/main/ins
 
 > 需要 Linux root 权限。安装完成后自动注册全局命令 `TGR`。
 
-<br/>
+---
 
-### 部署向导
-
-```
-$ TGR
-
-  ╔══════════════════════════════════════════════════════╗
-  ║         TG-Radar  —  Telegram 关键词监听雷达         ║
-  ║                      v5.0.0                          ║
-  ╚══════════════════════════════════════════════════════╝
-
-  ●  监控服务    运行中
-  ●  配置文件    已就绪
-  ●  TGR 命令   已注册
-
-   1   一键部署  （环境 + 配置 + 授权，全程引导）
-   2   停止服务
-   3   启动服务
-   ...
-```
-
-选择 **`1`** 进入一键部署向导，三个阶段全程引导，无需手动操作：
+## 📖 使用流程
 
 ```
-阶段一  环境部署
-  [1/5]  安装系统依赖 ........... 完成
-  [2/5]  同步项目文件 ........... 完成
-  [3/5]  配置 Python 虚拟环境 ... 完成
-  [4/5]  注册 systemd 守护进程 .. 完成
-  [5/5]  写入定时任务 & 注册 TGR  完成
-
-阶段二  填写配置（交互式）
-  ▸  输入 api_id 和 api_hash
-  ▸  自动连接 Telegram，列出所有分组和频道
-  ▸  选择监控分组 → 选择告警频道
-  ▸  config.json + _system_cache 自动写入
-
-阶段三  账号授权
-  ▸  输入手机号和验证码完成登录
-  ▸  分组数据自动同步
-  ▸  监控服务自动启动
+TGR
+ │
+ ├─ 检测到新版本 ──→  更新引导界面
+ │                     1) 快速更新（保留配置，重启服务）
+ │                     2) 完整重新部署（重走向导）
+ │                     3) 跳过
+ │
+ └─ 已是最新版本 ──→  管理菜单（零额外交互）
+                       1  一键部署   阶段一 环境 · 阶段二 配置 · 阶段三 授权
+                       2  停止服务
+                       3  启动服务
+                       4  重启服务
+                       5  状态与日志
+                       6  重新授权
+                       7  完全卸载
+                       0  退出
 ```
 
-<br/>
+**一键部署（选项 1）** 全程引导，无需手动操作：
 
-## 💬 ChatOps 指令参考
+- **阶段二** 自动连接 Telegram，列出所有分组和频道，引导选择
+- 分组、群组 ID、告警频道 **全部自动写入** `config.json` 和 `_system_cache`
+- 无需任何手动查询 ID
 
-在**告警频道**或 **Saved Messages** 中发送指令，雷达实时响应。
+---
 
-> 默认前缀 `-`，可在 `config.json` → `cmd_prefix` 修改为任意字符。
+## 💬 ChatOps 指令
+
+在**告警频道**或 **Saved Messages** 发送指令。  
+默认前缀 `-`，可在 `config.json → cmd_prefix` 修改。
+
+> **edit-in-place**：指令触发后原地编辑为 ⏳，处理完成后再次编辑为最终结果。
 
 <details open>
-<summary><b>📊 查询指令</b></summary>
-<br/>
+<summary><b>📊 查询</b></summary>
 
 | 指令 | 说明 |
 |------|------|
-| `-help` | 显示完整指令菜单 |
-| `-ping` | 心跳检测，返回在线时长和累计命中次数 |
-| `-status` | 完整状态报告（运行时长 / 群数 / 规则数 / 最近命中） |
-| `-log [n]` | 系统日志，默认 20 行，最多 100 行 |
-| `-folders` | 所有分组概览（状态 / 群数 / 规则数 / 告警频道） |
-| `-rules <分组名>` | 查看指定分组的完整规则列表 |
+| `-help` | 指令菜单 |
+| `-ping` | 心跳 · 在线时长 · 累计命中 |
+| `-status` | 状态报告（群组 / 规则 / 分组 / 命中） |
+| `-log [n]` | 系统日志，默认 20 行，最多 100 |
+| `-folders` | 所有分组概览 |
+| `-rules <分组名>` | 指定分组的规则列表 |
 
 </details>
 
 <details>
-<summary><b>⚙️ 配置指令（自动重启生效）</b></summary>
-<br/>
+<summary><b>⚙️ 配置（自动重启生效）</b></summary>
 
 | 指令 | 说明 |
 |------|------|
 | `-enable <分组名>` | 启用分组监控 |
 | `-disable <分组名>` | 停止分组监控 |
-| `-addrule <分组>\|<规则名>\|<正则>` | 添加规则（写入前自动验证正则语法） |
+| `-addrule <分组>\|<规则名>\|<正则>` | 添加规则（自动验证正则语法） |
 | `-delrule <分组>\|<规则名>` | 删除规则 |
-| `-setalert <分组>\|<频道ID>` | 为分组设置专属告警频道 |
-| `-setglobal <频道ID>` | 更新全局默认告警频道 |
+| `-setalert <分组>\|<频道ID>` | 设置分组专属告警频道 |
+| `-setglobal <频道ID>` | 更新全局告警频道 |
 
 </details>
 
 <details>
-<summary><b>🔧 系统指令</b></summary>
-<br/>
+<summary><b>🔧 系统</b></summary>
 
 | 指令 | 说明 |
 |------|------|
@@ -176,14 +138,14 @@ $ TGR
 
 </details>
 
-<br/>
+> 分组名支持模糊匹配（大小写不敏感 + 子串匹配），无需精确输入。
+
+---
 
 ## 📨 告警卡片
 
-命中关键词后推送至告警频道，格式如下：
-
 ```
-🎯  紧急商机
+🎯  规则名称
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📁 分组  ·  商机监控
 📍 来源  ·  某房产交流群
@@ -196,7 +158,7 @@ $ TGR
 🔗 直达消息
 ```
 
-<br/>
+---
 
 ## 📬 消息路由
 
@@ -205,58 +167,50 @@ $ TGR
 | 🚀 上线通知 | Saved Messages |
 | 🔄 同步报告 | Saved Messages |
 | 🎯 告警推送 | 各分组配置的告警频道 |
-| 💬 ChatOps 回复 | 发出指令所在的频道 |
+| 💬 ChatOps 回复 | 原地编辑发出指令的消息 |
 
-<br/>
+---
 
-## ⚙️ 配置参考
+## ⚙️ 配置文件
 
-**路径：** `/root/TG-Radar/config.json`
+`/root/TG-Radar/config.json`
 
 ```jsonc
 {
-    "api_id"   : 123456,                      // my.telegram.org 获取
-    "api_hash" : "xxxxxxxxxxxxxxxxxxxxxxxx",   // my.telegram.org 获取
-
-    "global_alert_channel_id" : -100123456789, // 全局告警频道 ID
-    "notify_channel_id"       : null,          // 系统通知频道（null = 同告警频道）
-    "cmd_prefix"              : "-",           // ChatOps 指令前缀
-
-    // 以下由系统自动维护 ───────────────────────────────────
-    "folder_rules"  : {},
-    "_system_cache" : {}
+    "api_id"   : 123456,                      // my.telegram.org
+    "api_hash" : "xxxxxxxxxxxxxxxxxxxxxxxx",   // my.telegram.org
+    "global_alert_channel_id" : -100123456789, // 全局告警频道
+    "notify_channel_id"       : null,          // 系统通知（null = 同告警频道）
+    "cmd_prefix"              : "-",           // 指令前缀
+    "folder_rules"  : {},                      // 自动维护
+    "_system_cache" : {}                       // 自动维护
 }
 ```
 
-<br/>
+---
 
-## 🗂️ 项目结构
+## 🗂️ 目录结构
 
 ```
 /root/TG-Radar/
-├── tg_monitor.py         # 核心守护进程
-├── sync_engine.py        # 自愈同步引擎
-├── config.json           # 配置文件
-├── deploy.sh             # 管理脚本 (TGR)
-├── TG_Radar_session.*    # 登录凭证 (auto)
-└── venv/                 # Python 虚拟环境 (auto)
+├── tg_monitor.py         核心守护进程
+├── sync_engine.py        自愈同步引擎
+├── config.json           配置文件
+├── deploy.sh             管理脚本 (TGR)
+├── TG_Radar_session.*    登录凭证 (auto)
+└── venv/                 Python 环境 (auto)
 
-/usr/local/bin/TGR                       # 全局快捷命令
-/etc/systemd/system/tg_monitor.service   # 系统服务
+/usr/local/bin/TGR                       全局命令
+/etc/systemd/system/tg_monitor.service   系统服务
 ```
 
-<br/>
+---
 
 ## 🗑️ 卸载
 
 ```bash
-TGR
-# 选择 7  完全卸载
+TGR  # 选择 7  完全卸载
 ```
-
-可选是否保留 `/root/TG-Radar/` 目录，保留则再次部署时配置不丢失。
-
-<br/>
 
 ---
 
@@ -264,13 +218,7 @@ TGR
 
 如果这个项目对你有帮助，欢迎点个 **Star** ⭐
 
-<br/>
-
 <a href="https://github.com/chenmo8848/TG-Radar/stargazers"><img src="https://img.shields.io/github/stars/chenmo8848/TG-Radar?style=social"/></a>
-&nbsp;&nbsp;
-<a href="https://github.com/chenmo8848/TG-Radar/issues"><img src="https://img.shields.io/github/issues/chenmo8848/TG-Radar?style=social"/></a>
-
-<br/>
 
 <img width="100%" src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=100&section=footer"/>
 
