@@ -15,7 +15,7 @@ CONFIG_PATH = os.path.join(WORK_DIR, "config.json")
 SESSION_NAME = os.path.join(WORK_DIR, "TG_Radar_session")
 SERVICE_NAME = "tg_monitor"
 
-# 🧹 智能垃圾回收函数：到期自动销毁消息
+# 🧹 智能垃圾回收：到期自动无痕销毁消息
 async def schedule_delete(msg, delay: int):
     if not msg or delay <= 0: return
     await asyncio.sleep(delay)
@@ -69,7 +69,7 @@ def _load_fresh_config() -> dict:
     with open(CONFIG_PATH, "r", encoding="utf-8") as f: return json.load(f)
 
 def _save_config(cfg: dict) -> None:
-    # 💡 核心优化：每次保存配置时，强行注入中文说明。打开 JSON 瞬间秒懂！
+    # 💡 每次保存配置时强行注入中文说明，彻底告别参数看不懂的痛点
     desc_cfg = {
         "_说明_1": "👇【核心通信凭证】前往 my.telegram.org 获取，切勿泄露",
         "api_id": cfg.get("api_id", 1234567),
@@ -125,43 +125,48 @@ def build_msg_link(chat, chat_id: int, msg_id: int) -> str:
     if raw.startswith("100") and len(raw) >= 12: return f"https://t.me/c/{raw[3:]}/{msg_id}"
     return ""
 
-async def send_notify(client, notify_channel, text: str):
-    target = notify_channel if notify_channel else "me"
-    try: await client.send_message(target, text, link_preview=False)
-    except: pass
-
 async def send_startup_notification(client, notify_channel, state, cmd_prefix):
+    # 全面优化上线的视觉排版，与极客控制台保持完全统一
     lines = []
     for name, cfg in state.folder_rules.items():
         if cfg.get("enable", False):
             grp_cnt = len(state.system_cache.get(name, []))
             rule_cnt = len(cfg.get("rules", {}))
             lines.append(f"  ✅ <code>{html.escape(name)}</code> · {grp_cnt} 节点 · {rule_cnt} 策略")
-    folder_block = "\n".join(lines) if lines else "  _(暂无活跃的监听拓扑)_"
+    folder_block = "\n".join(lines) if lines else "  <i>(暂无活跃的监听拓扑)</i>"
+    
     msg = f"""🚀 <b>TG-Radar 态势感知引擎已上线</b>
-━━━━━━━━━━━━━━━━━━━━━
-📡 <b>监控矩阵</b> · <code>{len(state.target_map)}</code> 节点
-🛡️ <b>防护策略</b> · <code>{state.valid_rules_count}</code> 规则
-🕐 <b>启动时间</b> · <code>{datetime.now().strftime('%m-%d %H:%M:%S')}</code>
-━━━━━━━━━━━━━━━━━━━━━
+
+<b>[ 引擎状态 ]</b>
+▸ 监控矩阵 : <code>{len(state.target_map)}</code> 节点
+▸ 防护策略 : <code>{state.valid_rules_count}</code> 规则
+▸ 启动时间 : <code>{datetime.now().strftime('%m-%d %H:%M:%S')}</code>
+
 <b>[ 活跃管道 ]</b>
 {folder_block}
-━━━━━━━━━━━━━━━━━━━━━
-💡 向此发送 <code>{html.escape(cmd_prefix)}help</code> 呼出核心控制台"""
+
+💡 <i>提示: 发送 {html.escape(cmd_prefix)}help 唤出极客控制台。</i>"""
     
     last_msg_path = os.path.join(WORK_DIR, ".last_msg")
+    target = notify_channel if notify_channel else "me"
+    msg_obj = None
+
     if os.path.exists(last_msg_path):
         try:
             with open(last_msg_path, "r") as f: ctx = json.load(f)
             action = ctx.get("action", "restart")
-            prefix_text = "✨ <b>[ OTA 固件更新完成 ]</b> 核心架构已热重载！\n\n" if action == "update" else ""
+            prefix_text = "✨ <b>[ OTA 固件更新完成 ]</b> 核心架构已热重载！\n\n" if action == "update" else "🔄 <b>[ 守护进程重启完成 ]</b>\n\n"
             msg_obj = await client.edit_message(ctx["chat_id"], ctx["msg_id"], prefix_text + msg)
             os.remove(last_msg_path)
-            # 重启通知也在 45 秒后销毁，绝不留痕
-            asyncio.create_task(schedule_delete(msg_obj, 45))
-            return
         except: pass
-    await send_notify(client, notify_channel, msg)
+        
+    if not msg_obj:
+        try: msg_obj = await client.send_message(target, msg, link_preview=False)
+        except: pass
+        
+    # 上线通知也会在 60 秒后自动销毁，彻底保证面板清爽
+    if msg_obj:
+        asyncio.create_task(schedule_delete(msg_obj, 60))
 
 def edit_config(modifier_fn) -> tuple:
     try:
@@ -181,7 +186,7 @@ def find_folder(folder_rules: dict, query: str) -> tuple:
 async def apply_hot_reload(event, state: AppState, success_text: str, auto_delete: int = 15):
     new_cfg = _load_fresh_config()
     state.hot_reload(new_cfg.get("folder_rules", {}), new_cfg.get("_system_cache", {}), new_cfg.get("auto_route_rules", {}))
-    final_text = f"{success_text}\n━━━━━━━━━━━━━━━━━━━━━\n⚡ <b>策略已实时生效</b>"
+    final_text = f"{success_text}\n⚡ <b>策略已实时生效</b>"
     msg = None
     try: msg = await event.edit(final_text)
     except: 
@@ -229,7 +234,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
     pe = html.escape(p)
     cmd_regex = re.compile(rf"^{re.escape(p)}(\w+)[ \t]*([\s\S]*)", re.IGNORECASE)
 
-    # 默认 15 秒后自动销毁面板
+    # 所有的回复指令默认自带阅后即焚
     async def _respond(event, text: str, auto_delete: int = 15):
         msg = None
         try: msg = await event.edit(text)
@@ -263,7 +268,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
 <code>{p}enable 分组名</code> 唤醒管道
 <code>{p}disable 分组名</code> 休眠管道
 <code>{p}addrule 分组名 规则名 正则</code> 挂载规则
-<code>{p}delrule 分组名 规则名 正则</code> 剔除规则
+<code>{p}delrule 分组名 规则名 [正则]</code> 剔除规则
 
 <b>[ 智能路由 ]</b>
 <code>{p}routes</code> 路由矩阵
@@ -275,7 +280,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
 <code>{p}update</code> OTA更新代码
 <code>{p}restart</code> 物理重启引擎
 
-💡 <i>注：所有的控制台回显面板，均会在阅读完毕后自动销毁，以保持界面整洁。</i>""", auto_delete=45)
+💡 <i>注：所有的控制台面板回显均会在倒计时结束后自动无痕销毁。</i>""", auto_delete=45)
             
         elif command == "ping": 
             await _respond(event, f"🟢 <b>SYS.PING</b> | UP: <code>{fmt_uptime(state.start_time)}</code> | 捕获量: <code>{state.total_hits}</code>", auto_delete=10)
@@ -429,7 +434,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             f_new, c_new, has_changes, report = await sync_engine.sync(client, cfg)
             if has_changes:
                 cfg["folder_rules"], cfg["_system_cache"] = f_new, c_new
-                _save_config(cfg) # 这里也会触发中文说明写入
+                _save_config(cfg)
                 state.hot_reload(f_new, c_new, cfg.get("auto_route_rules", {}))
             await apply_hot_reload(event, state, "✅ <b>拓扑云端同步完成</b>", 15)
 
@@ -488,7 +493,7 @@ async def main():
     config = load_config()
     api_id, api_hash, global_alert, notify_channel, cmd_prefix, auto_route = validate_config(config)
     
-    # 每次启动强制执行一次带中文说明的配置保存
+    # 每次启动强制写入中文注释，拯救配置文件可读性
     _save_config(config)
 
     state = AppState()
