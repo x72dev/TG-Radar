@@ -1,0 +1,15 @@
+# Telegram Session
+*.session
+*.session-journal
+
+# Config Files
+config.json
+
+# Python Virtual Env
+venv/
+__pycache__/
+*.pyc
+
+# System Files
+.DS_Store
+.silent_start
