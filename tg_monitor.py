@@ -14,6 +14,18 @@ WORK_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(WORK_DIR, "config.json")
 SESSION_NAME = os.path.join(WORK_DIR, "TG_Radar_session")
 SERVICE_NAME = "tg_monitor"
+MONITOR_LOG_PATH = os.path.join(WORK_DIR, "monitor.log") # 独立持久化业务日志文件
+
+# 📝 独立的纯净业务日志写入器（永久保存）
+def write_biz_log(action: str, detail: str):
+    time_str = datetime.now().strftime("%y-%m-%d %H:%M:%S")
+    icon = {"HIT": "🎯", "SYNC": "🔄", "SYS": "⚙️", "ERR": "❌"}.get(action, "·")
+    log_line = f"{icon} [{time_str}] {detail}\n"
+    try:
+        with open(MONITOR_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(log_line)
+    except Exception as e:
+        logger.error(f"写入业务日志失败: {e}")
 
 # 🧹 智能垃圾回收：到期自动无痕销毁消息
 async def schedule_delete(msg, delay: int):
@@ -144,10 +156,12 @@ async def send_startup_notification(client, notify_channel, state, cmd_prefix):
             lines.append(f"  ✅ <code>{html.escape(name)}</code> · {grp_cnt} 节点 · {rule_cnt} 策略")
     folder_block = "\n".join(lines) if lines else "  <i>(暂无活跃的监听拓扑)</i>"
     
+    # 👇 这里在 [ 引擎状态 ] 中补上了“智能路由”的统计
     msg = f"""🚀 <b>TG-Radar 态势感知引擎已上线</b>
 
 <b>[ 引擎状态 ]</b>
 ▸ 监控矩阵 : <code>{len(state.target_map)}</code> 节点
+▸ 智能路由 : <code>{len(state.auto_route_rules)}</code> 策略
 ▸ 防护策略 : <code>{state.valid_rules_count}</code> 规则
 ▸ 启动时间 : <code>{datetime.now().strftime('%m-%d %H:%M:%S')}</code>
 
@@ -167,6 +181,7 @@ async def send_startup_notification(client, notify_channel, state, cmd_prefix):
             prefix_text = "✨ <b>[ OTA 固件更新完成 ]</b> 核心架构已热重载！\n\n" if action == "update" else "🔄 <b>[ 守护进程重启完成 ]</b>\n\n"
             msg_obj = await client.edit_message(ctx["chat_id"], ctx["msg_id"], prefix_text + msg)
             os.remove(last_msg_path)
+            write_biz_log("SYS", f"系统恢复上线 (原因: {action})")
         except: pass
         
     if not msg_obj:
@@ -231,7 +246,7 @@ async def auto_route_groups(client, auto_route_rules) -> bool:
         logger.error("智能路由巡检异常: %s", e)
         return False
 
-# ================= 核心修复区：严格对齐嵌套层级 =================
+# ================= 核心闭包域：已严格校验缩进 =================
 def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> None:
     p = cmd_prefix
     pe = html.escape(p)
@@ -254,7 +269,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
 <b>[ 态势观测 ]</b>
 <code>{p}ping</code> 引擎心跳
 <code>{p}status</code> 监控大屏
-<code>{p}log 20</code> 查看最近20行日志
+<code>{p}log [行数]</code> 查阅纯净业务日志
 
 <b>[ 策略调度 ]</b>
 <code>{p}folders</code> 活跃管道
@@ -291,45 +306,29 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
 ▸ 最新捕获 : {last}""", auto_delete=30)
             
         elif command == "log":
-            try: await event.edit("⏳ <b>获取日志中...</b>")
+            try: await event.edit("⏳ <b>读取持久化日志中...</b>")
             except: pass
             n_lines = 20
-            if args:
-                try: n_lines = max(1, min(100, int(args)))
-                except ValueError: return await safe_reply(event, f"❌ 行数参数无效：`{args}`", 10)
+            if args and args.isdigit():
+                n_lines = max(1, min(100, int(args)))
             try:
-                import html as _html
-                import re as _re
-                raw = subprocess.check_output(
-                    ["journalctl", "-u", SERVICE_NAME, f"-n{n_lines*4}", "--no-pager", "--output=short-iso"],
-                    text=True, stderr=subprocess.STDOUT
-                )
-                lines_out = []
-                for line in raw.splitlines():
-                    if line.startswith("--") or not line.strip(): continue
-                    msg = line.split("]: ", 1)[-1] if "]: " in line else line
-                    if any(x in msg for x in ["Got difference for channel", "Connecting to", "Connection to", "TcpFull"]):
-                        continue
-                    try:
-                        m = _re.match(r"^\d{4}-\d{2}-\d{2} (\d{2}:\d{2}:\d{2}) \[(\w+)\] (.*)", msg.strip())
-                        if m:
-                            time_str, level, msg_content = m.groups()
-                            icon = {"INFO": "ℹ️", "WARNING": "⚠️", "ERROR": "❌", "DEBUG": "🔍"}.get(level, "·")
-                            lines_out.append(f"{icon} <code>{time_str}</code> {_html.escape(msg_content)}")
-                        else:
-                            if len(msg) < 200: lines_out.append(f"· {_html.escape(msg)}")
-                    except: pass
+                if not os.path.exists(MONITOR_LOG_PATH):
+                    return await safe_reply(event, "📜 <b>纯净业务日志</b> · 暂无本地记录", 15)
                 
-                lines_out = lines_out[-n_lines:]
-                if not lines_out: return await safe_reply(event, "📜 <b>日志</b> · 暂无可读的业务记录", 15)
+                with open(MONITOR_LOG_PATH, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
                 
-                log_body = "\n".join(lines_out)
+                lines_out = lines[-n_lines:]
+                if not lines_out:
+                    return await safe_reply(event, "📜 <b>纯净业务日志</b> · 暂无记录", 15)
+                
+                log_body = "".join(lines_out).strip()
                 if len(log_body) > 3600: log_body = "…（已截断）\n" + log_body[-3500:]
                 
-                html_msg = f"📜 <b>系统核心日志</b> · 最新 {len(lines_out)} 条\n<blockquote expandable>{log_body}</blockquote>"
+                html_msg = f"📜 <b>系统核心日志</b> · 最近 {len(lines_out)} 条\n<blockquote expandable>{html.escape(log_body)}</blockquote>"
                 await safe_reply(event, html_msg, auto_delete=60)
             except Exception as e:
-                await safe_reply(event, f"❌ 获取日志失败: `{e}`", 15)
+                await safe_reply(event, f"❌ 读取日志失败: `{e}`", 15)
 
         elif command == "folders":
             lines, enabled_cnt = [], 0
@@ -358,6 +357,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             tgt = (command == "enable")
             def do_toggle(cfg): cfg["folder_rules"][matched]["enable"] = tgt
             edit_config(do_toggle)
+            write_biz_log("SYS", f"{'唤醒' if tgt else '休眠'}管道: {matched}")
             await apply_hot_reload(event, state, f"{'✅' if tgt else '⭕'} <b>已{'唤醒' if tgt else '休眠'}数据管道</b> <code>{html.escape(matched)}</code>", 15)
 
         elif command == "addrule":
@@ -373,6 +373,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             merged_pattern = "(" + "|".join(sorted(current_words)) + ")"
             def do_add(cfg): cfg["folder_rules"][matched].setdefault("rules", {})[rule_name] = merged_pattern
             edit_config(do_add)
+            write_biz_log("SYS", f"挂载策略: {rule_name} 到 {matched}")
             await apply_hot_reload(event, state, f"✅ <b>[ 监控策略已挂载 ]</b>\n▸ <b>策略</b> : <code>{html.escape(rule_name)}</code>", 15)
 
         elif command == "delrule":
@@ -388,10 +389,12 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             if not remove_words or not remain_words:
                 def do_delall(cfg): del cfg["folder_rules"][matched]["rules"][rule_name]
                 edit_config(do_delall)
+                write_biz_log("SYS", f"废弃策略模块: {rule_name}")
                 return await apply_hot_reload(event, state, f"🗑️ <b>[ 策略模块已废弃 ]</b>", 15)
             new_pattern = "(" + "|".join(sorted(remain_words)) + ")"
             def do_update(cfg): cfg["folder_rules"][matched]["rules"][rule_name] = new_pattern
             edit_config(do_update)
+            write_biz_log("SYS", f"剔除策略词汇: {rule_name}")
             await apply_hot_reload(event, state, f"✂️ <b>[ 策略单元已精准剥离 ]</b>", 15)
 
         elif command == "routes":
@@ -407,6 +410,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             except Exception as e: return await safe_reply(event, f"❌ <b>正则编译失败</b>: {e}", 15)
             def do_addroute(cfg): cfg.setdefault("auto_route_rules", {})[folder_name] = regex
             edit_config(do_addroute)
+            write_biz_log("SYS", f"挂载智能路由: {folder_name}")
             await apply_hot_reload(event, state, f"✅ <b>[ 智能路由已挂载 ]</b>\n▸ <b>目标分组</b> : <code>{html.escape(folder_name)}</code>", 15)
 
         elif command == "delroute":
@@ -415,6 +419,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             if folder_name not in state.auto_route_rules: return await safe_reply(event, "❌ 找不到该路由策略", 15)
             def do_delroute(cfg): del cfg["auto_route_rules"][folder_name]
             edit_config(do_delroute)
+            write_biz_log("SYS", f"剔除智能路由: {folder_name}")
             await apply_hot_reload(event, state, f"🗑️ <b>[ 智能路由已剔除 ]</b>\n▸ <b>解绑分组</b> : <code>{html.escape(folder_name)}</code>", 15)
 
         elif command == "sync":
@@ -429,10 +434,14 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                 cfg["folder_rules"], cfg["_system_cache"] = f_new, c_new
                 _save_config(cfg)
                 state.hot_reload(f_new, c_new, cfg.get("auto_route_rules", {}))
+                write_biz_log("SYNC", "手动触发同步：拓扑已更新并热重载")
+            else:
+                write_biz_log("SYNC", "手动触发同步：云端拓扑无实质变动")
             await safe_reply(event, "✅ <b>拓扑云端同步完成</b>\n⚡ <b>策略已实时生效</b>", 15)
 
         elif command == "update":
             reply_msg = await event.reply("🔄 <b>[ OTA 固件拉取更新 ]</b>\n> 正在从主分支同步原生代码...")
+            write_biz_log("SYS", "触发 OTA 固件拉取更新")
             with open(os.path.join(WORK_DIR, ".last_msg"), "w") as f:
                 json.dump({"chat_id": event.chat_id, "msg_id": reply_msg.id, "action": "update"}, f)
             await asyncio.sleep(1)
@@ -442,6 +451,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
 
         elif command == "restart":
             reply_msg = await event.reply("🔄 <b>[ 物理级系统重启 ]</b>\n正在通过 Systemd 重载守护进程...")
+            write_biz_log("SYS", "触发守护进程重启")
             with open(os.path.join(WORK_DIR, ".last_msg"), "w") as f:
                 json.dump({"chat_id": event.chat_id, "msg_id": reply_msg.id, "action": "restart"}, f)
             await asyncio.sleep(1.5)
@@ -477,6 +487,10 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                         state.total_hits += 1
                         state.last_hit_folder = task["folder_name"]
                         state.last_hit_time = datetime.now()
+                        
+                        # 🎯 核心写入：将命中事件持久化到本地日志
+                        write_biz_log("HIT", f"关键词: {match.group(0)} | 管道: {task['folder_name']} | 来源: {chat_title}")
+                        
                     except: pass
                     break
         except Exception as e:
@@ -509,6 +523,7 @@ async def main():
                         _save_config(cfg)
                         state.hot_reload(f_new, c_new, cfg.get("auto_route_rules", {}))
                         logger.info("📡 内部巡检：已发现新拓扑并完成热重载。")
+                        write_biz_log("SYNC", "系统自动巡检：已发现新拓扑并热重载生效")
                 except Exception as e:
                     logger.error("内部巡检异常: %s", e)
 
@@ -516,6 +531,7 @@ async def main():
         
         register_handlers(client, state, notify_channel, cmd_prefix)
         await send_startup_notification(client, notify_channel, state, cmd_prefix)
+        write_biz_log("SYS", "系统服务主进程启动完成")
         await client.run_until_disconnected()
 
 if __name__ == "__main__":
