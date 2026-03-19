@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  TG-Radar  --  一键安装脚本 v5.0.0
+#  TG-Radar  --  一键安装脚本 v5.0.1
 #  https://github.com/chenmo8848/TG-Radar
 #
 #  用法：
@@ -16,7 +16,7 @@ BOLD='\033[1m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; YELLOW='\033[1;33m'; RESE
 
 echo ""
 echo -e "${BOLD}  ============================================================${RESET}"
-echo -e "${BOLD}     TG-Radar  --  Telegram 关键词监听雷达  --  安装程序 v5.0.0      ${RESET}"
+echo -e "${BOLD}     TG-Radar  --  Telegram 关键词监听雷达  --  安装程序 v5.0.1      ${RESET}"
 echo -e "${BOLD}  ============================================================${RESET}"
 echo ""
 
