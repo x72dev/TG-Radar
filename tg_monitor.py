@@ -1,4 +1,4 @@
-import os, re, sys, json, asyncio, logging, subprocess, html
+import os, re, sys, json, asyncio, logging, subprocess, html, importlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -21,6 +21,17 @@ async def schedule_delete(msg, delay: int):
     await asyncio.sleep(delay)
     try: await msg.delete()
     except: pass
+
+# 🔄 封装通用的回复与阅后即焚逻辑
+async def safe_reply(event, text: str, auto_delete: int = 15):
+    msg = None
+    try: msg = await event.edit(text)
+    except:
+        try: msg = await event.reply(text)
+        except: return None
+    if msg and auto_delete > 0:
+        asyncio.create_task(schedule_delete(msg, auto_delete))
+    return msg
 
 @dataclass
 class AppState:
@@ -187,13 +198,7 @@ async def apply_hot_reload(event, state: AppState, success_text: str, auto_delet
     new_cfg = _load_fresh_config()
     state.hot_reload(new_cfg.get("folder_rules", {}), new_cfg.get("_system_cache", {}), new_cfg.get("auto_route_rules", {}))
     final_text = f"{success_text}\n⚡ <b>策略已实时生效</b>"
-    msg = None
-    try: msg = await event.edit(final_text)
-    except: 
-        try: msg = await event.reply(final_text)
-        except: pass
-    if msg and auto_delete > 0:
-        asyncio.create_task(schedule_delete(msg, auto_delete))
+    await safe_reply(event, final_text, auto_delete)
 
 async def auto_route_groups(client, auto_route_rules) -> bool:
     if not auto_route_rules: return False
@@ -234,28 +239,18 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
     pe = html.escape(p)
     cmd_regex = re.compile(rf"^{re.escape(p)}(\w+)[ \t]*([\s\S]*)", re.IGNORECASE)
 
-    # 所有的回复指令默认自带阅后即焚
-    async def _respond(event, text: str, auto_delete: int = 15):
-        msg = None
-        try: msg = await event.edit(text)
-        except:
-            try: msg = await event.reply(text)
-            except: return
-        if msg and auto_delete > 0:
-            asyncio.create_task(schedule_delete(msg, auto_delete))
-
     @client.on(events.NewMessage(chats=["me"], pattern=cmd_regex))
     async def control_panel(event):
         command = event.pattern_match.group(1).lower()
         args = (event.pattern_match.group(2) or "").strip()
-        try: await _dispatch(event, command, args)
+        try: await _dispatch(event, command, args, state, client, p, pe)
         except Exception as exc:
-            try: await _respond(event, f"❌ <b>内部异常</b>：<code>{html.escape(str(exc))}</code>", 15)
+            try: await safe_reply(event, f"❌ <b>内部异常</b>：<code>{html.escape(str(exc))}</code>", 15)
             except: pass
 
-async def _dispatch(event, command: str, args: str):
+async def _dispatch(event, command: str, args: str, state: AppState, client: TelegramClient, p: str, pe: str):
         if command == "help":
-            await _respond(event, f"""🤖 <b>TG-Radar 极客控制台</b>
+            await safe_reply(event, f"""🤖 <b>TG-Radar 极客控制台</b>
 
 <b>[ 态势观测 ]</b>
 <code>{p}ping</code> 引擎心跳
@@ -283,12 +278,12 @@ async def _dispatch(event, command: str, args: str):
 💡 <i>注：所有面板均在 45s 内自动无痕销毁。</i>""", auto_delete=45)
             
         elif command == "ping": 
-            await _respond(event, f"🟢 <b>SYS.PING</b> | UP: <code>{fmt_uptime(state.start_time)}</code> | 捕获量: <code>{state.total_hits}</code>", auto_delete=10)
+            await safe_reply(event, f"🟢 <b>SYS.PING</b> | UP: <code>{fmt_uptime(state.start_time)}</code> | 捕获量: <code>{state.total_hits}</code>", auto_delete=10)
         
         elif command == "status":
             last = f"<code>{html.escape(state.last_hit_folder)}</code> ({fmt_dt(state.last_hit_time)})" if state.last_hit_time else "暂无记录"
             enabled_cnt = sum(1 for cfg in state.folder_rules.values() if cfg.get("enable", False))
-            await _respond(event, f"""⚡ <b>TG-Radar 监控大屏</b>
+            await safe_reply(event, f"""⚡ <b>TG-Radar 监控大屏</b>
 ▸ 运行时长 : <code>{fmt_uptime(state.start_time)}</code>
 ▸ 拓扑矩阵 : <code>{len(state.target_map)}</code> 节点 · <code>{enabled_cnt}</code> 管道
 ▸ 智能路由 : <code>{len(state.auto_route_rules)}</code> 条策略
@@ -302,7 +297,7 @@ async def _dispatch(event, command: str, args: str):
             n_lines = 20
             if args:
                 try: n_lines = max(1, min(100, int(args)))
-                except ValueError: return await _respond(event, f"❌ 行数参数无效：`{args}`", 10)
+                except ValueError: return await safe_reply(event, f"❌ 行数参数无效：`{args}`", 10)
             try:
                 import html as _html
                 import re as _re
@@ -327,15 +322,15 @@ async def _dispatch(event, command: str, args: str):
                     except: pass
                 
                 lines_out = lines_out[-n_lines:]
-                if not lines_out: return await _respond(event, "📜 <b>日志</b> · 暂无可读的业务记录", 15)
+                if not lines_out: return await safe_reply(event, "📜 <b>日志</b> · 暂无可读的业务记录", 15)
                 
                 log_body = "\n".join(lines_out)
                 if len(log_body) > 3600: log_body = "…（已截断）\n" + log_body[-3500:]
                 
                 html_msg = f"📜 <b>系统核心日志</b> · 最新 {len(lines_out)} 条\n<blockquote expandable>{log_body}</blockquote>"
-                await _respond(event, html_msg, auto_delete=60)
+                await safe_reply(event, html_msg, auto_delete=60)
             except Exception as e:
-                await _respond(event, f"❌ 获取日志失败: `{e}`", 15)
+                await safe_reply(event, f"❌ 获取日志失败: `{e}`", 15)
 
         elif command == "folders":
             lines, enabled_cnt = [], 0
@@ -347,20 +342,20 @@ async def _dispatch(event, command: str, args: str):
                     enabled_cnt += 1
                 else: lines.append(f"⭕ {html.escape(name)}\n   └ {rule_cnt} 策略 · <i>(已休眠)</i>")
             body = "\n\n".join(lines) if lines else "<i>尚未建立拓扑</i>"
-            await _respond(event, f"📂 <b>数据管道拓扑</b> | 活跃 <code>{enabled_cnt}/{len(state.folder_rules)}</code>\n\n{body}", auto_delete=45)
+            await safe_reply(event, f"📂 <b>数据管道拓扑</b> | 活跃 <code>{enabled_cnt}/{len(state.folder_rules)}</code>\n\n{body}", auto_delete=45)
 
         elif command == "rules":
-            if not args: return await _respond(event, f"❓ 语法: {pe}rules 分组名", 15)
+            if not args: return await safe_reply(event, f"❓ 语法: {pe}rules 分组名", 15)
             matched, _ = find_folder(state.folder_rules, args)
-            if not matched: return await _respond(event, f"❌ 未找到管道: <code>{html.escape(args)}</code>", 15)
+            if not matched: return await safe_reply(event, f"❌ 未找到管道: <code>{html.escape(args)}</code>", 15)
             cfg = state.folder_rules[matched]
             rules_block = "\n\n".join([f"  {i}. <b>{html.escape(lvl)}</b>\n     <code>{html.escape(pat)}</code>" for i, (lvl, pat) in enumerate(cfg.get("rules", {}).items(), 1)]) if cfg.get("rules") else "  <i>(空)</i>"
-            await _respond(event, f"📋 <b>{html.escape(matched)}</b> 策略明细\n\n{rules_block}", auto_delete=45)
+            await safe_reply(event, f"📋 <b>{html.escape(matched)}</b> 策略明细\n\n{rules_block}", auto_delete=45)
 
         elif command in ["enable", "disable"]:
-            if not args: return await _respond(event, f"❓ 语法: {pe}{command} 分组名", 15)
+            if not args: return await safe_reply(event, f"❓ 语法: {pe}{command} 分组名", 15)
             matched, _ = find_folder(state.folder_rules, args)
-            if not matched: return await _respond(event, "❌ 找不到该管道", 15)
+            if not matched: return await safe_reply(event, "❌ 找不到该管道", 15)
             tgt = (command == "enable")
             def do_toggle(cfg): cfg["folder_rules"][matched]["enable"] = tgt
             edit_config(do_toggle)
@@ -368,9 +363,9 @@ async def _dispatch(event, command: str, args: str):
 
         elif command == "addrule":
             parts = args.split(maxsplit=2)
-            if len(parts) < 3: return await _respond(event, f"❓ 语法: {pe}addrule 分组名 规则名 匹配正则", 15)
+            if len(parts) < 3: return await safe_reply(event, f"❓ 语法: {pe}addrule 分组名 规则名 匹配正则", 15)
             matched, _ = find_folder(state.folder_rules, parts[0].strip())
-            if not matched: return await _respond(event, "❌ 找不到该管道", 15)
+            if not matched: return await safe_reply(event, "❌ 找不到该管道", 15)
             rule_name = parts[1].strip()
             new_words = [re.escape(w.strip()) for w in parts[2].split() if w.strip()]
             existing = state.folder_rules[matched].get("rules", {})
@@ -383,12 +378,12 @@ async def _dispatch(event, command: str, args: str):
 
         elif command == "delrule":
             parts = args.split()
-            if len(parts) < 2: return await _respond(event, f"❓ 语法: {pe}delrule 分组名 规则名 [正则]", 15)
+            if len(parts) < 2: return await safe_reply(event, f"❓ 语法: {pe}delrule 分组名 规则名 [正则]", 15)
             matched, _ = find_folder(state.folder_rules, parts[0].strip())
-            if not matched: return await _respond(event, "❌ 找不到该管道", 15)
+            if not matched: return await safe_reply(event, "❌ 找不到该管道", 15)
             rule_name, remove_words = parts[1].strip(), set(re.escape(w.strip()) for w in parts[2:] if w.strip())
             existing = state.folder_rules[matched].get("rules", {})
-            if rule_name not in existing: return await _respond(event, "❌ 策略不存在", 15)
+            if rule_name not in existing: return await safe_reply(event, "❌ 策略不存在", 15)
             current_words = set(t.strip() for t in existing[rule_name].strip("()").split("|") if t.strip())
             remain_words = current_words - remove_words
             if not remove_words or not remain_words:
@@ -403,32 +398,31 @@ async def _dispatch(event, command: str, args: str):
         elif command == "routes":
             lines = [f"  • <b>{html.escape(f)}</b> : <code>{html.escape(p)}</code>" for f, p in state.auto_route_rules.items()]
             block = "\n".join(lines) if lines else "  <i>(暂无智能路由策略)</i>"
-            await _respond(event, f"🔀 <b>智能收纳路由表</b>\n\n{block}\n\n<i>配置指令: {pe}addroute 分组名 正则</i>", auto_delete=45)
+            await safe_reply(event, f"🔀 <b>智能收纳路由表</b>\n\n{block}\n\n<i>配置指令: {pe}addroute 分组名 正则</i>", auto_delete=45)
 
         elif command == "addroute":
             parts = args.split(maxsplit=1)
-            if len(parts) < 2: return await _respond(event, f"❓ 语法: {pe}addroute 分组名 匹配正则", 15)
+            if len(parts) < 2: return await safe_reply(event, f"❓ 语法: {pe}addroute 分组名 匹配正则", 15)
             folder_name, regex = parts[0].strip(), parts[1].strip()
             try: re.compile(regex)
-            except Exception as e: return await _respond(event, f"❌ <b>正则编译失败</b>: {e}", 15)
+            except Exception as e: return await safe_reply(event, f"❌ <b>正则编译失败</b>: {e}", 15)
             def do_addroute(cfg): cfg.setdefault("auto_route_rules", {})[folder_name] = regex
             edit_config(do_addroute)
             await apply_hot_reload(event, state, f"✅ <b>[ 智能路由已挂载 ]</b>\n▸ <b>目标分组</b> : <code>{html.escape(folder_name)}</code>", 15)
 
         elif command == "delroute":
-            if not args: return await _respond(event, f"❓ 语法: {pe}delroute 分组名", 15)
+            if not args: return await safe_reply(event, f"❓ 语法: {pe}delroute 分组名", 15)
             folder_name = args.strip()
-            if folder_name not in state.auto_route_rules: return await _respond(event, "❌ 找不到该路由策略", 15)
+            if folder_name not in state.auto_route_rules: return await safe_reply(event, "❌ 找不到该路由策略", 15)
             def do_delroute(cfg): del cfg["auto_route_rules"][folder_name]
             edit_config(do_delroute)
             await apply_hot_reload(event, state, f"🗑️ <b>[ 智能路由已剔除 ]</b>\n▸ <b>解绑分组</b> : <code>{html.escape(folder_name)}</code>", 15)
 
         elif command == "sync":
             try: await event.edit("🔄 <b>[ 拓扑云端全量同步 ]</b>\n> 正在执行热重载...")
-            except: msg = await event.reply("🔄 <b>[ 拓扑云端全量同步 ]</b>\n> 正在执行热重载...")
+            except: await event.reply("🔄 <b>[ 拓扑云端全量同步 ]</b>\n> 正在执行热重载...")
             import sync_engine
-            if 'sync_engine' in sys.modules: sys.modules.pop('sync_engine')
-            import sync_engine
+            importlib.reload(sync_engine)  # 优雅的热重载
             cfg = _load_fresh_config()
             await auto_route_groups(client, cfg.get("auto_route_rules", {}))
             f_new, c_new, has_changes, report = await sync_engine.sync(client, cfg)
@@ -436,21 +430,22 @@ async def _dispatch(event, command: str, args: str):
                 cfg["folder_rules"], cfg["_system_cache"] = f_new, c_new
                 _save_config(cfg)
                 state.hot_reload(f_new, c_new, cfg.get("auto_route_rules", {}))
-            await apply_hot_reload(event, state, "✅ <b>拓扑云端同步完成</b>", 15)
+            await safe_reply(event, "✅ <b>拓扑云端同步完成</b>\n⚡ <b>策略已实时生效</b>", 15)
 
         elif command == "update":
-            await event.reply("🔄 <b>[ OTA 固件拉取更新 ]</b>\n> 正在从主分支同步原生代码...")
+            reply_msg = await event.reply("🔄 <b>[ OTA 固件拉取更新 ]</b>\n> 正在从主分支同步原生代码...")
             with open(os.path.join(WORK_DIR, ".last_msg"), "w") as f:
-                json.dump({"chat_id": event.chat_id, "msg_id": event.id, "action": "update"}, f)
+                json.dump({"chat_id": event.chat_id, "msg_id": reply_msg.id, "action": "update"}, f)
             await asyncio.sleep(1)
-            cmd = f"curl -fsSL https://github.com/chenmo8848/TG-Radar/archive/refs/heads/main.zip -o /tmp/tgr.zip && unzip -q -o /tmp/tgr.zip -d /tmp/ && cp -af /tmp/TG-Radar-main/. {WORK_DIR}/ && rm -rf /tmp/tgr.zip /tmp/TG-Radar-main"
+            # 增加更新 local .commit_sha，解决 CLI 终端循环提示有更新的问题
+            cmd = f"curl -fsSL https://github.com/chenmo8848/TG-Radar/archive/refs/heads/main.zip -o /tmp/tgr.zip && unzip -q -o /tmp/tgr.zip -d /tmp/ && cp -af /tmp/TG-Radar-main/. {WORK_DIR}/ && rm -rf /tmp/tgr.zip /tmp/TG-Radar-main && curl -fsSL https://api.github.com/repos/chenmo8848/TG-Radar/commits/main | python3 -c \"import sys,json; print(json.load(sys.stdin).get('sha',''))\" > {WORK_DIR}/.commit_sha"
             subprocess.run(cmd, shell=True)
             subprocess.Popen(["sudo", "systemctl", "restart", SERVICE_NAME])
 
         elif command == "restart":
-            await event.reply("🔄 <b>[ 物理级系统重启 ]</b>\n正在通过 Systemd 重载守护进程...")
+            reply_msg = await event.reply("🔄 <b>[ 物理级系统重启 ]</b>\n正在通过 Systemd 重载守护进程...")
             with open(os.path.join(WORK_DIR, ".last_msg"), "w") as f:
-                json.dump({"chat_id": event.chat_id, "msg_id": event.id, "action": "restart"}, f)
+                json.dump({"chat_id": event.chat_id, "msg_id": reply_msg.id, "action": "restart"}, f)
             await asyncio.sleep(1.5)
             subprocess.Popen(["sudo", "systemctl", "restart", SERVICE_NAME])
 
@@ -510,8 +505,7 @@ async def main():
                     cfg = _load_fresh_config()
                     await auto_route_groups(client, cfg.get("auto_route_rules", {}))
                     import sync_engine
-                    if 'sync_engine' in sys.modules: sys.modules.pop('sync_engine')
-                    import sync_engine
+                    importlib.reload(sync_engine) # 优雅的热重载
                     f_new, c_new, changed, _ = await sync_engine.sync(client, cfg)
                     if changed:
                         cfg["folder_rules"], cfg["_system_cache"] = f_new, c_new
