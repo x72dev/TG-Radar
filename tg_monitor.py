@@ -148,25 +148,37 @@ def build_msg_link(chat, chat_id: int, msg_id: int) -> str:
     return ""
 
 async def send_startup_notification(client, notify_channel, state, cmd_prefix):
+    # 构建活跃管道区块
     lines = []
+    enabled_cnt = 0
     for name, cfg in state.folder_rules.items():
         if cfg.get("enable", False):
             grp_cnt = len(state.system_cache.get(name, []))
             rule_cnt = len(cfg.get("rules", {}))
             lines.append(f"  ✅ <code>{html.escape(name)}</code> · {grp_cnt} 节点 · {rule_cnt} 策略")
+            enabled_cnt += 1
     folder_block = "\n".join(lines) if lines else "  <i>(暂无活跃的监听拓扑)</i>"
     
-    # 👇 这里在 [ 引擎状态 ] 中补上了“智能路由”的统计
+    # 🌟 新增：构建智能路由明细区块
+    route_lines = []
+    for f_name, pat in state.auto_route_rules.items():
+        route_lines.append(f"  🔀 <code>{html.escape(f_name)}</code> : <code>{html.escape(pat)}</code>")
+    route_block = "\n".join(route_lines) if route_lines else "  <i>(暂无智能路由策略)</i>"
+    
+    # 全面对齐面板内容
     msg = f"""🚀 <b>TG-Radar 态势感知引擎已上线</b>
 
 <b>[ 引擎状态 ]</b>
-▸ 监控矩阵 : <code>{len(state.target_map)}</code> 节点
+▸ 监控矩阵 : <code>{len(state.target_map)}</code> 节点 · <code>{enabled_cnt}</code> 管道
 ▸ 智能路由 : <code>{len(state.auto_route_rules)}</code> 策略
 ▸ 防护策略 : <code>{state.valid_rules_count}</code> 规则
 ▸ 启动时间 : <code>{datetime.now().strftime('%m-%d %H:%M:%S')}</code>
 
 <b>[ 活跃管道 ]</b>
 {folder_block}
+
+<b>[ 智能路由 ]</b>
+{route_block}
 
 💡 <i>提示: 发送 {html.escape(cmd_prefix)}help 唤出极客控制台。</i>"""
     
@@ -246,7 +258,6 @@ async def auto_route_groups(client, auto_route_rules) -> bool:
         logger.error("智能路由巡检异常: %s", e)
         return False
 
-# ================= 核心闭包域：已严格校验缩进 =================
 def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> None:
     p = cmd_prefix
     pe = html.escape(p)
