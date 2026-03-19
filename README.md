@@ -1,224 +1,86 @@
 <div align="center">
 
-<img width="100%" src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=180&section=header&text=TG-Radar&fontSize=72&fontColor=fff&animation=twinkling&fontAlignY=32&desc=Telegram+Keyword+Intelligence+Monitor&descSize=18&descColor=rgba(255,255,255,0.8)&descAlignY=55"/>
+<img src="https://readme-typing-svg.herokuapp.com?font=Fira+Code&weight=800&size=36&pause=1000&color=00D2FF&center=true&vCenter=true&width=800&lines=⚡+TG-Radar+;Precision+Keyword+Intelligence;Simplified+Deployment+Experience" alt="TG-Radar" />
 
-<br/>
+**一款为 Telegram 深度定制的工业级关键词实时感知系统**
 
-<a href="https://github.com/chenmo8848/TG-Radar/releases"><img src="https://img.shields.io/github/v/release/chenmo8848/TG-Radar?style=for-the-badge&logo=github&color=0d1117&labelColor=161b22&label=v5.1.1"/></a>
-&nbsp;
-<img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white&labelColor=161b22"/>
-&nbsp;
-<img src="https://img.shields.io/badge/Telegram-MTProto-26A5E4?style=for-the-badge&logo=telegram&logoColor=white&labelColor=161b22"/>
-&nbsp;
-<img src="https://img.shields.io/badge/Platform-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black&labelColor=161b22"/>
-&nbsp;
-<img src="https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge&labelColor=161b22"/>
-
-<br/><br/>
-
-**实时监控 Telegram 群组关键词，命中即推送告警。** **部署一次，此后全靠手机管理，永不需要再登服务器。**
-
-<br/>
-
-[快速安装](#-快速安装) · [使用流程](#-使用流程) · [ChatOps 指令](#-chatops-指令) · [配置](#配置文件)
+<p align="center">
+  <img src="https://img.shields.io/badge/Deploy-One--Step-00D2FF?style=for-the-badge&logo=rocket" />
+  <img src="https://img.shields.io/badge/OS-Linux--Server-white?style=for-the-badge&logo=linux" />
+  <img src="https://img.shields.io/badge/Auth-Session--Base-blue?style=for-the-badge&logo=telegram" />
+</p>
 
 </div>
 
 ---
 
-## ✦ 核心特性
-
-<table>
-<tr>
-<td width="50%" valign="top">
-
-**🎯 实时关键词监控** 纯空格自然语言指令引擎，后台 AI 级自动去重、合并与剔除。物理拦截 Bot，命中延迟 < 1s。
-
-**📱 ChatOps 极客管理** 在告警频道发送指令即可管理全站。支持官方最新 `<blockquote expandable>` 长文自动折叠排版，全中文极简 UI 态势大屏。
-
-</td>
-<td width="50%" valign="top">
-
-**🔄 自愈同步引擎** 定时从 Telegram 云端无缝拉取分组结构，自动处理改名 / 新增 / 删除，全量热重载不断线。
-
-**🔔 智能部署管家** 内置 `TGR` 全局管家。一键安装、静默版本更新比对、进程防波及重启、防正则注入保护，彻底解放运维。
-
-</td>
-</tr>
-</table>
-
----
-
-## ⚡ 快速安装
+## 🚀 极速部署
+> [!IMPORTANT]
+> **复制下方命令到你的终端，剩下的交给我。**
+> 脚本会自动完成：虚拟环境配置、依赖安装、Service 服务注册、`TGR` 快捷键映射。
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/chenmo8848/TG-Radar/main/install.sh)
 ```
 
-> 需要 Linux root 权限。安装完成后自动注册全局命令 `TGR`。
+---
+
+## 🛠️ TGR 极简控制台
+安装完成后，在终端输入 **`TGR`**。这不再是一个冷冰冰的脚本，而是你的**图形化运维管家**。
+
+| 菜单选项 | 业务逻辑解析 |
+| :--- | :--- |
+| **[1] 一键部署** | 自动拉取最新的 `tg_monitor.py` 与 `sync_engine.py` 并初始化。 |
+| **[4] 重启服务** | 毫秒级重载配置，不丢失已有的 Telegram Session 授权。 |
+| **[5] 运行状态** | 实时调用 `journalctl` 抓取最近 20 行日志，所见即所得。 |
+| **[6] 重新授权** | 解决 Session 失效的终极方案，直接通过管理面板重走验证流程。 |
+| **[7] 完全卸载** | 优雅退出，自动清理残留的 Systemd 服务与 Cron 定时任务。 |
 
 ---
 
-## 📖 使用流程
+## 💬 ChatOps 交互（核心玩法）
+**这是 TG-Radar 最顶尖的交互设计。** 你无需再回 SSH 敲代码，所有操作都在 Telegram 聊天窗口完成。
 
-```text
-TGR
- │
- ├─ 检测到新版本 ──→  更新引导界面
- │                     1) 快速更新（保留配置，重启服务）
- │                     2) 完整重新部署（重走向导）
- │                     3) 跳过
- │
- └─ 已是最新版本 ──→  管理菜单（零额外交互）
-                       1  一键部署   阶段一 环境 · 阶段二 配置 · 阶段三 授权
-                       2  停止服务
-                       3  启动服务
-                       4  重启服务
-                       5  状态与日志
-                       6  重新授权
-                       7  完全卸载
-                       0  退出
-```
+### 📡 态势感知指令
+- `-ping` —— **心跳自检**：返回系统已持续运行天数及当前负载。
+- `-status` —— **全局图谱**：列出当前所有“活跃中”的分组及命中次数。
+- `-log [行数]` —— **远程日志**：想看服务器发生什么了？发个消息，它就回传给你。
 
-**一键部署（选项 1）** 全程引导，无需手动操作：
-
-- **阶段二** 自动连接 Telegram，列出所有分组和频道，引导选择。
-- 管道分组、群组 ID、告警频道 **全部自动写入** `config.json` 和 `_system_cache`。
-- 无需手动抓取任何繁琐的 ID。
+### ⚙️ 规则管理指令
+- `-addrule [分组名]|[规则名]|[正则表达式]`
+  > **示例：** `-addrule 搞机|苹果监控|iPhone\s15`
+  > 只要有人在“搞机”分组发了包含 iPhone 15 的消息，秒级推送到你手机。
+- `-sync`
+  > **动态同步**：你在 TG 里新拉了群或改了分组名？发这条指令，`sync_engine` 自动对齐。
 
 ---
 
-## 💬 ChatOps 指令
+## 💎 核心黑科技：为什么它更稳？
 
-在**告警频道**或 **Saved Messages** 发送指令。  
-默认前缀 `-`，可在 `config.json → cmd_prefix` 修改。
+### 1. 动态无感升级 (deploy.sh)
+每次启动 `TGR` 时，后台会自动执行 `git fetch`。一旦发现开发者发布了新功能或修复了 Bug，面板会**高亮提示**。点击更新，代码自动覆写，你的配置完全保留。
 
-> **edit-in-place**：指令触发后原地编辑为 ⏳ 处理中，完成后自动更新为最终结果大屏。
+### 2. 智能拓扑追踪 (sync_engine.py)
+传统的监听脚本需要你手动填 Channel ID。TG-Radar 会**自动读取你的文件夹（Folder）**。你在 TG 客户端里把群拖进哪个文件夹，它就自动监听哪个文件夹。
 
-<details open>
-<summary><b>📊 态势观测</b></summary>
-
-| 指令 | 说明 |
-|------|------|
-| `-help` | 呼出核心控制台 |
-| `-ping` | 节点心跳与存活探测 |
-| `-status` | 全局监控态势大屏 |
-| `-log [n]` | 提取系统核心运行日志 (支持超长折叠) |
-| `-folders` | 检视数据管道拓扑矩阵 |
-| `-rules <分组名>` | 查看指定管道的策略明细 |
-
-</details>
-
-<details>
-<summary><b>🛡️ 策略引擎（纯空格传参，自动防注入）</b></summary>
-
-| 指令 | 说明 |
-|------|------|
-| `-enable <分组名>` | 唤醒挂起的数据管道 |
-| `-disable <分组名>` | 休眠活跃的数据管道 |
-| `-addrule <分组> <规则> <词1> [词2]` | 智能策略挂载 (自动去重与正则合并) |
-| `-delrule <分组> <规则> [词1]` | 精准策略剥离 (参数空则整体废弃) |
-| `-setalert <分组> <频道ID>` | 分配独立告警路由 |
-| `-setglobal <频道ID>` | 更新全局默认路由 |
-
-</details>
-
-<details>
-<summary><b>⚙️ 系统底层</b></summary>
-
-| 指令 | 说明 |
-|------|------|
-| `-sync` | 强制云端拓扑全量同步 |
-| `-restart` | 热重启核心守护进程 |
-
-</details>
+### 3. 异步高并发 (tg_monitor.py)
+基于 **Telethon** 纯异步框架设计。哪怕你同时监听几百个千人群，每秒上千条消息，系统也能在**不阻塞、不掉线**的前提下完成正则匹配。
 
 ---
 
-## 📨 告警卡片交互
+## 🏥 极客维护手册
 
-```text
-🚨 [ 情报雷达告警 ]
+> [!TIP]
+> **遇到问题？先看这里。**
 
-🎯 触发关键词 : 卖房
-🏷️ 命中策略 : 紧急 (商机监控)
-📡 情报来源 : 某房产交流群
-👤 发送载体 : @username
-⏱ 捕获时间 : 14:32:05
-
-[ 现场原始快照 ]
-> 有套房子急售，280万，随时看房，全款还能谈...
-> (此处支持长文自动折叠 Read more...)
-
-🔗 [直达核心现场](https://t.me/c/1234567/8899)
-```
-
----
-
-## 📬 消息路由流向
-
-| 消息类型 | 推送目标 |
-|---------|---------|
-| 🚀 引擎上线通知 | Saved Messages |
-| 🔄 拓扑同步报告 | Saved Messages |
-| 🚨 监控告警推送 | 各分组配置的独立告警频道 |
-| 💬 ChatOps 回复 | 原地编辑发出指令的消息卡片 |
-
----
-
-<a id="配置文件"></a>
-## ⚙️ 配置文件
-
-`/root/TG-Radar/config.json`
-
-> **注意**：标准 JSON 不支持 `//` 注释，程序使用 `_note_` 字段进行安全注记。
-
-```json
-{
-    "api_id": 123456,
-    "api_hash": "xxxxxxxxxxxxxxxxxxxxxxxx",
-    "_note_channels": "下面是全局与系统告警频道ID",
-    "global_alert_channel_id": -100123456789,
-    "notify_channel_id": null,
-    "cmd_prefix": "-",
-    "folder_rules": {},
-    "_system_cache": {}
-}
-```
-
----
-
-## 🗂️ 目录结构
-
-```text
-/root/TG-Radar/
-├── tg_monitor.py         核心守护进程
-├── sync_engine.py        自愈同步引擎
-├── config.json           配置文件 (动态生成)
-├── deploy.sh             部署管家核心逻辑
-├── TG_Radar_session.* 登录凭证 (安全隔离)
-└── venv/                 Python 虚拟环境
-
-/usr/local/bin/TGR                       系统级全局命令
-/etc/systemd/system/tg_monitor.service   Systemd 守护服务
-```
-
----
-
-## 🗑️ 完全卸载
-
-```bash
-TGR  # 选择 7  完全卸载
-```
+- **手动查阅日志：** `journalctl -u tg_monitor -f`
+- **配置文件路径：** `/root/TG-Radar/config.json`
+- **Session 凭证：** `/root/TG-Radar/tg_radar.session` (请妥善保管)
 
 ---
 
 <div align="center">
 
-如果这个项目对你有帮助，欢迎点个 **Star** ⭐
-
-<a href="https://github.com/chenmo8848/TG-Radar/stargazers"><img src="https://img.shields.io/github/stars/chenmo8848/TG-Radar?style=social"/></a>
-
-<img width="100%" src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=100&section=footer"/>
+**TG-Radar — 专注于情报价值，而非复杂的配置。**
 
 </div>

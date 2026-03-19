@@ -10,7 +10,7 @@ WORK_DIR     = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH  = os.path.join(WORK_DIR, "config.json")
 SESSION_NAME = os.path.join(WORK_DIR, "TG_Radar_session")
 SERVICE_NAME = "tg_monitor"
-VERSION = "5.1.1"
+VERSION = ""
 
 def resolve_peer_id(peer) -> int:
     try:
@@ -58,7 +58,7 @@ async def send_sync_report(client, notify_channel, report, elapsed, cmd_prefix):
     active_block = "\n".join(active_lines) if active_lines else "  _(无活跃管道)_"
     status_line = "🔔 <b>云端拓扑已更新并生效</b>" if changed else "✅ <b>云端拓扑无实质变动</b>"
     
-    msg = f"""🔄 <b>云端拓扑同步报告</b> · <code>v{VERSION}</code>
+    msg = f"""🔄 <b>云端拓扑同步报告</b>
 ━━━━━━━━━━━━━━━━━━━━━
 {status_line}
 ⏱️ <b>链路耗时</b> · <code>{elapsed:.1f}</code> 秒

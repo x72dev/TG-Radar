@@ -1,50 +1,96 @@
 #!/bin/bash
 # ============================================================
-#  TG-Radar  --  一键安装脚本 v5.1.1
+# TG-Radar -- 核心一键安装向导 (Main Branch)
 # ============================================================
 set -euo pipefail
 
 REPO="chenmo8848/TG-Radar"
 INSTALL_DIR="/root/TG-Radar"
 GLOBAL_CMD="/usr/local/bin/TGR"
-BOLD='\033[1m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; YELLOW='\033[1;33m'; RESET='\033[0m'
+COMMIT_FILE="$INSTALL_DIR/.commit_sha"
 
-echo -e "\n${BOLD}  ============================================================${RESET}"
-echo -e "${BOLD}     TG-Radar  --  Telegram 关键词监听雷达  --  安装程序 v5.1.1      ${RESET}"
-echo -e "${BOLD}  ============================================================${RESET}\n"
+# 现代 CLI 色彩
+B='\033[1m'
+DIM='\033[2m'
+RES='\033[0m'
+MAIN='\033[36m'
+TAG_OK='\033[42;30m'
+TAG_ERR='\033[41;37m'
+TAG_WARN='\033[43;30m'
 
-if [ "$(id -u)" -ne 0 ]; then echo -e "  ${YELLOW}[警告] 需要 root 权限。${RESET}"; exit 1; fi
-for cmd in curl unzip python3; do command -v "$cmd" > /dev/null 2>&1 || { echo "  [错误] 缺少工具：$cmd"; exit 1; }; done
+echo -e "\n${MAIN}${B} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ${RES}"
+echo -e "${B}                   TG-RADAR 核心一键安装向导                    ${RES}"
+echo -e "${MAIN}${B} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ${RES}\n"
 
-echo -e "  ${CYAN}==>${RESET} 正在获取最新版本信息..."
-RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest") || { echo "  [错误] 无法访问 GitHub API"; exit 1; }
-VERSION=$(echo "$RELEASE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")
-DOWNLOAD_URL=$(echo "$RELEASE_JSON" | python3 -c "import sys,json; print([a['browser_download_url'] for a in json.load(sys.stdin).get('assets',[]) if a['name'].endswith('.zip')][0])" 2>/dev/null || echo "")
+if [ "$(id -u)" -ne 0 ]; then 
+    echo -e "  ${TAG_ERR} 警告 ${RES} 需要 root 权限运行此脚本。"
+    exit 1
+fi
 
-if [ -z "$DOWNLOAD_URL" ]; then echo "  [错误] 未找到 .zip 附件。"; exit 1; fi
+echo -ne "  ${MAIN}⠋${RES} 正在检查环境依赖..."
+for cmd in curl unzip python3; do 
+    if ! command -v "$cmd" > /dev/null 2>&1; then
+        echo -e "\n  ${TAG_ERR} 错误 ${RES} 缺少必要依赖工具：$cmd"
+        exit 1
+    fi
+done
+echo -e "\r  ${TAG_OK} 依赖 ${RES} 环境检查通过       "
+
+echo -ne "  ${MAIN}⠋${RES} 正在获取最新主分支代码信息..."
+API_RES=$(curl -fsSL --connect-timeout 5 "https://api.github.com/repos/${REPO}/commits/main") || { 
+    echo -e "\n  ${TAG_ERR} 错误 ${RES} 无法访问 GitHub API，请检查网络。"
+    exit 1
+}
+LATEST_SHA=$(echo "$API_RES" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))" 2>/dev/null)
+
+if [ -z "$LATEST_SHA" ]; then 
+    echo -e "\n  ${TAG_ERR} 错误 ${RES} 无法解析最新 Commit SHA。"
+    exit 1
+fi
+SHORT_SHA=${LATEST_SHA:0:7}
+echo -e "\r  ${TAG_OK} 寻址 ${RES} 最新代码"
 
 RESTORE_CONFIG=false
 if [ -f "$INSTALL_DIR/config.json" ]; then
     cp "$INSTALL_DIR/config.json" /tmp/tg_radar_config.bak
-    echo -e "  ${YELLOW}[提示] 已备份现有 config.json，安装后将自动还原。${RESET}"
+    echo -e "  ${TAG_WARN} 提示 ${RES} 检测到现有配置，已自动备份。"
     RESTORE_CONFIG=true
 fi
 
-echo -e "  ${CYAN}==>${RESET} 正在下载与部署..."
+echo -ne "  ${MAIN}⠋${RES} 正在下载并解压源码..."
 mkdir -p "$INSTALL_DIR"
-curl -fsSL "$DOWNLOAD_URL" -o /tmp/TG_Radar_release.zip || { echo "  [错误] 下载失败。"; exit 1; }
-unzip -q -o /tmp/TG_Radar_release.zip -d "$INSTALL_DIR"
-rm -f /tmp/TG_Radar_release.zip
+rm -rf /tmp/tgr_main.zip /tmp/TG-Radar-main
+curl -fsSL "https://github.com/${REPO}/archive/refs/heads/main.zip" -o /tmp/tgr_main.zip || { 
+    echo -e "\n  ${TAG_ERR} 错误 ${RES} 代码包下载失败。"
+    exit 1
+}
 
-if [ "$RESTORE_CONFIG" = true ]; then cp /tmp/tg_radar_config.bak "$INSTALL_DIR/config.json" && rm -f /tmp/tg_radar_config.bak; fi
-chmod +x "$INSTALL_DIR/deploy.sh"
+unzip -q -o /tmp/tgr_main.zip -d /tmp/ >/dev/null 2>&1
+cp -af /tmp/TG-Radar-main/. "$INSTALL_DIR/"
+rm -rf /tmp/tgr_main.zip /tmp/TG-Radar-main
+echo -e "\r  ${TAG_OK} 部署 ${RES} 核心文件覆写完成     "
 
+# 还原配置
+if [ "$RESTORE_CONFIG" = true ]; then 
+    cp /tmp/tg_radar_config.bak "$INSTALL_DIR/config.json"
+    rm -f /tmp/tg_radar_config.bak
+fi
+
+# 写入 Commit Hash 以对接部署管家
+echo "$LATEST_SHA" > "$COMMIT_FILE"
+
+chmod +x "$INSTALL_DIR/deploy.sh" "$INSTALL_DIR/install.sh" 2>/dev/null || true
+
+# 注册全局命令
+echo -ne "  ${MAIN}⠋${RES} 正在配置全局环境..."
 cat > "$GLOBAL_CMD" << 'TGREOF'
 #!/bin/bash
 exec bash /root/TG-Radar/deploy.sh "$@"
 TGREOF
 chmod +x "$GLOBAL_CMD"
+echo -e "\r  ${TAG_OK} 注册 ${RES} TGR 全局快捷命令完成 "
 
-echo -e "\n  ${GREEN}[完成]${RESET} TG-Radar ${VERSION} 安装成功！2 秒后自动打开管理菜单...\n"
+echo -e "\n  ${TAG_OK} 成功 ${RES} ${B}TG-Radar 核心安装已完成！${RES}"
+echo -e "         正在唤起部署管家 (2 秒后)...\n"
 sleep 2
 exec bash "$INSTALL_DIR/deploy.sh"

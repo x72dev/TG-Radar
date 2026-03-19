@@ -46,3 +46,4 @@ Thumbs.db
 *.zip
 *.tar.gz
 *.7z
+.commit_sha

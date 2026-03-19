@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  TG-Radar  v5.1.1  —  Management Script
+#  TG-Radar  —  Management Script
 #  Path : /root/TG-Radar
 #  Cmd  : TGR
 # ============================================================
@@ -9,6 +9,13 @@ set -uo pipefail
 # ── Colors ──────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; DIM='\033[2m'; RESET='\033[0m'
+
+# 现代 CLI 扩展色彩
+MAIN='\033[36m'        # 青蓝色主轴
+TEXT='\033[37m'        # 纯白文字
+TAG_OK='\033[42;30m'   # 绿底黑字
+TAG_ERR='\033[41;37m'  # 红底白字
+TAG_WARN='\033[43;30m' # 黄底黑字
 
 _i() { echo -e "${CYAN} ➜  ${RESET}$*"; }
 _ok(){ echo -e "${GREEN} ✔  ${RESET}$*"; }
@@ -26,7 +33,7 @@ MON_BIN="$APP_DIR/tg_monitor.py"
 PY="$APP_DIR/venv/bin/python3"
 TGR_CMD="/usr/local/bin/TGR"
 REPO="chenmo8848/TG-Radar"
-VER="v5.1.1"
+COMMIT_FILE="$APP_DIR/.commit_sha" # [系统保留] 用于记录当前运行的 Commit Hash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── Helpers ──────────────────────────────────────────────────
@@ -47,85 +54,85 @@ _try_start() {
 }
 
 # ============================================================
-#  Startup: silent update check
+#  Startup: dynamic main-branch update check
 # ============================================================
 _startup_update_check() {
-    local json latest dl_url
-    json=$(curl -fsSL --connect-timeout 5 "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null) || return 0
-
-    latest=$(echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name',''))" 2>/dev/null) || return 0
-    clean_latest=$(echo "$latest" | sed 's/^[vV]//')
-    clean_ver=$(echo "$VER" | sed 's/^[vV]//')
+    local api_res remote_sha local_sha short_remote short_local dl_url
     
-    if [ -z "$clean_latest" ] || [ "$clean_latest" = "$clean_ver" ]; then return 0; fi
+    # 获取 GitHub main 分支最新 commit (3 秒超时，防止无网络卡死)
+    api_res=$(curl -fsSL --connect-timeout 3 "https://api.github.com/repos/${REPO}/commits/main" 2>/dev/null) || return 0
+    remote_sha=$(echo "$api_res" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))" 2>/dev/null)
+    [ -z "$remote_sha" ] && return 0
     
-    # 【终极修复】使用 Python 进行绝对精准的版本号元组比对，杜绝版本倒退 Bug
-    is_newer=$(python3 -c "
-def v(s): return tuple(map(int, (s.strip().split('.') + ['0','0','0'])[:3]))
-try:
-    print('YES' if v('$clean_latest') > v('$clean_ver') else 'NO')
-except:
-    print('NO')
-" 2>/dev/null || echo "NO")
+    # 获取本地记录的 commit
+    local_sha=""
+    [ -f "$COMMIT_FILE" ] && local_sha=$(cat "$COMMIT_FILE")
+    
+    # 如果 Hash 一致，则静默跳过
+    if [ "$remote_sha" = "$local_sha" ]; then return 0; fi
 
-    if [ "$is_newer" != "YES" ]; then
-        return 0
-    fi
-
-    dl_url=$(echo "$json" | python3 -c "
-import sys,json
-a=[x['browser_download_url'] for x in json.load(sys.stdin).get('assets',[]) if x['name'].endswith('.zip')]
-print(a[0] if a else '')" 2>/dev/null) || return 0
-    [ -z "$dl_url" ] && return 0
+    short_remote=${remote_sha:0:7}
+    short_local=${local_sha:0:7}
+    [ -z "$short_local" ] && short_local="未记录"
 
     clear
-    echo ""
-    echo -e "${BOLD}  ╔══════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${BOLD}  ║               发现新版本                             ║${RESET}"
-    echo -e "${BOLD}  ╚══════════════════════════════════════════════════════╝${RESET}"
-    echo ""
-    echo -e "  当前版本  ${DIM}${VER}${RESET}"
-    echo -e "  最新版本  ${GREEN}${BOLD}${latest}${RESET}"
-    echo ""
+    echo -e "\n${MAIN}${BOLD} ▌ 发现 TG-Radar 核心引擎更新 ${RESET}\n"
+    echo -e "  最新提交:  ${TAG_OK} ${short_remote} ${RESET}\n"
     _bar
     echo ""
-    echo -e "  ${BOLD}${GREEN}1${RESET}  快速更新      保留全部配置，更新文件后自动重启服务"
-    echo -e "  ${BOLD}${CYAN}2${RESET}  完整重新部署  更新文件后重走完整向导，可重新配置"
-    echo -e "  ${BOLD}3${RESET}  跳过          本次不更新"
+    echo -e "  ${BOLD}${GREEN}1${RESET}  快速拉取同步  ${DIM}(平滑覆盖源码并自动重启服务，配置完全保留)${RESET}"
+    echo -e "  ${BOLD}${CYAN}2${RESET}  重走部署向导  ${DIM}(更新源码后重新执行完整配置流程)${RESET}"
+    echo -e "  ${BOLD}3${RESET}  跳过更新      ${DIM}(本次忽略)${RESET}"
     echo ""
-    read -rp "  请选择 [1/2/3，回车=跳过] ：" _upd
+    read -rp "  请选择 [1/2/3，回车=跳过] ➔ " _upd
     _upd="${_upd:-3}"
     echo ""
 
     case "$_upd" in
         1|2)
-            _i "正在下载 ${latest} ..."
-            if curl -fsSL "$dl_url" -o /tmp/TG_Radar_update.zip 2>/dev/null; then
+            _i "正在拉取最新源码 (Commit: ${short_remote})..."
+            dl_url="https://github.com/${REPO}/archive/refs/heads/main.zip"
+            
+            if curl -fsSL "$dl_url" -o /tmp/tgr_main_update.zip 2>/dev/null; then
+                # 备份核心配置
                 [ -f "$APP_DIR/config.json" ] && cp "$APP_DIR/config.json" /tmp/_tgr_cfg.bak
-                unzip -q -o /tmp/TG_Radar_update.zip -d "$APP_DIR" 2>/dev/null
-                rm -f /tmp/TG_Radar_update.zip
+                
+                # 解压并清理包装文件夹
+                rm -rf /tmp/TG-Radar-main
+                unzip -q -o /tmp/tgr_main_update.zip -d /tmp/ 2>/dev/null
+                
+                # 强制覆盖文件，但不删除原目录中未跟踪的 session 文件
+                cp -af /tmp/TG-Radar-main/. "$APP_DIR/" 2>/dev/null
+                
+                # 还原配置并清理临时文件
                 [ -f /tmp/_tgr_cfg.bak ] && cp /tmp/_tgr_cfg.bak "$APP_DIR/config.json" && rm -f /tmp/_tgr_cfg.bak
-                chmod +x "$APP_DIR/deploy.sh" 2>/dev/null || true
-                _ok "已更新至 ${latest}"
+                rm -rf /tmp/tgr_main_update.zip /tmp/TG-Radar-main
+                
+                chmod +x "$APP_DIR/deploy.sh" "$APP_DIR/install.sh" 2>/dev/null || true
+                
+                # 更新本地 Hash 记录
+                echo "$remote_sha" > "$COMMIT_FILE"
+                
+                _ok "已同步至最新提交 [${short_remote}]"
                 echo ""
+                
                 if [ "$_upd" = "1" ]; then
-                    _i "重启监控服务..."
+                    _i "正在重载监控服务..."
                     sudo systemctl restart "$SVC" 2>/dev/null && sleep 1 || true
-                    _svc_active && _ok "服务已重启，最新版本运行中。" || _w "重启失败  →  journalctl -u $SVC -n 20"
+                    _svc_active && _ok "服务已重启，最新代码运行中。" || _w "重启失败  →  journalctl -u $SVC -n 20"
                     echo ""
-                    echo -e "  ${GREEN}${BOLD}快速更新完成！所有配置已保留。${RESET}"
-                    echo ""
-                    read -rp "  按回车进入管理菜单 ..." _DUMMY
+                    echo -e "  ${GREEN}${BOLD}快速更新完成！所有配置及 Session 已保留。${RESET}\n"
+                    read -rp "  按回车键进入管理菜单 ..." _DUMMY
                     exec bash "$APP_DIR/deploy.sh"
                 else
-                    echo -e "  ${GREEN}3 秒后以新版本重新启动...${RESET}"
+                    echo -e "  ${GREEN}3 秒后以最新源码重载向导...${RESET}"
                     sleep 3
                     exec bash "$APP_DIR/deploy.sh"
                 fi
             else
-                _w "下载失败，继续使用本地版本。"
+                _w "下载源码失败，继续使用本地版本。"
                 echo ""
-                read -rp "  按回车继续 ..." _DUMMY
+                read -rp "  按回车键继续 ..." _DUMMY
             fi
             ;;
         *)
@@ -138,36 +145,56 @@ print(a[0] if a else '')" 2>/dev/null) || return 0
 _startup_update_check
 
 # ============================================================
-#  Main menu
+#  Main menu (现代化重构)
 # ============================================================
 _menu() {
     clear
-    echo ""
-    echo -e "${CYAN}${BOLD}  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰${RESET}"
-    echo -e "${BOLD}         TG-Radar 态势感知引擎 · 核心部署管家${RESET}"
-    echo -e "${DIM}                      v5.1.1                          ${RESET}"
-    echo -e "${CYAN}${BOLD}  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰${RESET}"
-    echo ""
+    echo -e "\n${MAIN}${BOLD} ▌ TG-RADAR 核心控制台 ${RESET}"
+    echo -e "${MAIN} │${RESET}"
 
-    if _svc_active; then printf "  ${GREEN}●${RESET}  服务    ${GREEN}运行中${RESET}\n"
-    elif _svc_enabled; then printf "  ${YELLOW}○${RESET}  服务    ${YELLOW}已停止${RESET}  ${DIM}(开机自启已注册)${RESET}\n"
-    else printf "  ${RED}✕${RESET}  服务    ${RED}未安装${RESET}\n"; fi
+    # --- 状态树 ---
+    echo -e "${MAIN} ├─ ${BOLD}${TEXT}系统引擎状态${RESET}"
+    
+    if _svc_active; then
+        echo -e "${MAIN} │  ${DIM}守护进程    ${RESET}${TAG_OK}  运行中  ${RESET}"
+    elif _svc_enabled; then
+        echo -e "${MAIN} │  ${DIM}守护进程    ${RESET}${TAG_WARN}  已挂起  ${RESET} ${DIM} 已配置开机自启${RESET}"
+    else
+        echo -e "${MAIN} │  ${DIM}守护进程    ${RESET}${TAG_ERR}  未启动  ${RESET}"
+    fi
 
-    if _api_ok; then echo -e "      ${GREEN}●${RESET}  配置    ${GREEN}就绪${RESET}"
-    elif _cfg_ok; then echo -e "      ${YELLOW}○${RESET}  配置    ${YELLOW}待填写${RESET}"
-    else echo -e "      ${RED}✕${RESET}  配置    ${RED}不存在${RESET}"; fi
+    if _api_ok; then
+        echo -e "${MAIN} │  ${DIM}核心配置    ${RESET}${TAG_OK}  已就绪  ${RESET}"
+    elif _cfg_ok; then
+        echo -e "${MAIN} │  ${DIM}核心配置    ${RESET}${TAG_WARN}  待填写  ${RESET}"
+    else
+        echo -e "${MAIN} │  ${DIM}核心配置    ${RESET}${TAG_ERR}  已缺失  ${RESET}"
+    fi
 
-    [ -f "$TGR_CMD" ] && echo -e "  ${GREEN}●${RESET}  TGR     ${GREEN}已注册${RESET}" || echo -e "  ${YELLOW}○${RESET}  TGR     ${YELLOW}未注册${RESET}"
+    if [ -x "$TGR_CMD" ]; then
+        echo -e "${MAIN} │  ${DIM}全局环境    ${RESET}${TAG_OK}  已注册  ${RESET} ${DIM} 终端输入 TGR 即可唤出${RESET}"
+    else
+        echo -e "${MAIN} │  ${DIM}全局环境    ${RESET}${TAG_ERR}  未注册  ${RESET}"
+    fi
+    
+    echo -e "${MAIN} │${RESET}"
 
-    _bar; echo ""
-    echo -e "  ${BOLD}${GREEN} 1 ${RESET}  一键部署  ${DIM}全程引导：环境 + 配置 + 授权${RESET}"
-    echo -e "  ${BOLD}${CYAN} 2 ${RESET}  停止服务"
-    echo -e "  ${BOLD}${CYAN} 3 ${RESET}  启动服务"
-    echo -e "  ${BOLD}${CYAN} 4 ${RESET}  重启服务"
-    echo -e "  ${BOLD}${CYAN} 5 ${RESET}  状态与日志"
-    echo -e "  ${BOLD}${YELLOW} 6 ${RESET}  重新授权  ${DIM}session 失效 / 切换账号${RESET}"
-    echo -e "  ${BOLD}${RED} 7 ${RESET}  完全卸载"
-    echo -e "  ${BOLD} 0 ${RESET}  退出\n"
+    # --- 操作树 ---
+    echo -e "${MAIN} ├─ ${BOLD}${TEXT}执行指令${RESET}"
+    echo -e "${MAIN} │  ${BOLD}1${RESET}  一键全自动部署"
+    echo -e "${MAIN} │  ${BOLD}2${RESET}  平滑停止服务"
+    echo -e "${MAIN} │  ${BOLD}3${RESET}  启动守护进程"
+    echo -e "${MAIN} │  ${BOLD}4${RESET}  重启雷达引擎"
+    echo -e "${MAIN} │${RESET}"
+    
+    # --- 维护树 ---
+    echo -e "${MAIN} ├─ ${BOLD}${TEXT}进阶维护${RESET}"
+    echo -e "${MAIN} │  ${BOLD}5${RESET}  查看状态与实时日志"
+    echo -e "${MAIN} │  ${BOLD}6${RESET}  刷新监听账号授权"
+    echo -e "${MAIN} │  ${BOLD}7${RESET}  彻底卸载引擎组件"
+    echo -e "${MAIN} │${RESET}"
+    echo -e "${MAIN} │  ${DIM}0  退出控制台${RESET}"
+    echo -e "${MAIN} │${RESET}"
 }
 
 _deploy() {
@@ -202,7 +229,7 @@ _deploy() {
     _step 3 "配置 Python 虚拟环境" bash -c "cd '$APP_DIR'; [ ! -d venv ] && python3 -m venv venv; ./venv/bin/pip install --upgrade pip >/dev/null; ./venv/bin/pip install telethon requests >/dev/null"
     
     _step 4 "注册 systemd 服务" bash -c "
-        printf '[Unit]\nDescription=TG-Radar v5.1.1\nAfter=network.target\n\n[Service]\nType=simple\nUser=root\nWorkingDirectory=$APP_DIR\nExecStart=$PY $MON_BIN\nRestart=always\nRestartSec=5\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=multi-user.target\n' > '$SVC_FILE'
+        printf '[Unit]\nDescription=TG-Radar Service\nAfter=network.target\n\n[Service]\nType=simple\nUser=root\nWorkingDirectory=$APP_DIR\nExecStart=$PY $MON_BIN\nRestart=always\nRestartSec=5\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=multi-user.target\n' > '$SVC_FILE'
         systemctl daemon-reload && systemctl enable '$SVC' >/dev/null 2>&1
     "
 
@@ -405,6 +432,9 @@ _reauth() { clear; echo -e "\n  ${BOLD}重新授权${RESET}\n"; cd "$APP_DIR"; "
 _uninstall() { clear; echo -e "\n  ${BOLD}${RED}卸载服务${RESET}\n"; read -rp "  确认删除? (yes): " c; [ "$c" != "yes" ] && return; systemctl stop "$SVC" 2>/dev/null; systemctl disable "$SVC" 2>/dev/null; rm -f "$SVC_FILE"; rm -f "$TGR_CMD"; crontab -l | grep -v 'sync_engine' | crontab -; _ok "已卸载"; _pause; }
 
 while true; do
-    _menu; read -rp "  请输入选项 [0-7] ：" _choice; echo ""
+    _menu
+    printf "\n${MAIN} ╰─➤ ${RESET}${BOLD}请选择指令 [0-7]: ${RESET}"
+    read -r _choice
+    echo ""
     case "$_choice" in 1) _deploy;; 2) _stop;; 3) _start;; 4) _restart;; 5) _status;; 6) _reauth;; 7) _uninstall;; 0) echo -e "  ${GREEN}已退出。${RESET}\n"; exit 0;; *) _w "无效选项。"; sleep 1;; esac
 done

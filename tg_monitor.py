@@ -11,7 +11,7 @@ WORK_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(WORK_DIR, "config.json")
 SESSION_NAME = os.path.join(WORK_DIR, "TG_Radar_session")
 SERVICE_NAME = "tg_monitor"
-VERSION = "5.1.1"
+VERSION = ""
 
 @dataclass
 class RadarStats:
@@ -90,7 +90,7 @@ async def send_startup_notification(client, notify_channel, target_map, valid_ru
             rule_cnt = len(cfg.get("rules", {}))
             lines.append(f"  ✅ <code>{html.escape(name)}</code> · {grp_cnt} 节点 · {rule_cnt} 策略")
     folder_block = "\n".join(lines) if lines else "  _(暂无活跃的监听拓扑)_"
-    msg = f"""🚀 <b>TG-Radar 态势感知引擎已上线</b> · <code>v{VERSION}</code>
+    msg = f"""🚀 <b>TG-Radar 态势感知引擎已上线</b>
 ━━━━━━━━━━━━━━━━━━━━━
 📡 <b>监控矩阵</b> · <code>{len(target_map)}</code> 节点
 🛡️ <b>防护策略</b> · <code>{valid_rules_count}</code> 规则
@@ -174,7 +174,7 @@ def register_handlers(client, target_map, valid_rules_count, stats, folder_rules
 
     async def _dispatch(event, command: str, args: str):
         if command == "help":
-            await _respond(event, f"""🤖 <b>TG-Radar 控制台</b> · <code>v{VERSION}</code>
+            await _respond(event, f"""🤖 <b>TG-Radar 控制台</b>
 
 <b>[ 态势观测 ]</b>
 <code>{p}ping</code> 心跳探测
@@ -202,7 +202,6 @@ def register_handlers(client, target_map, valid_rules_count, stats, folder_rules
             await _respond(event, f"""⚡ <b>TG-Radar 监控大屏</b>
 
 <b>[ 引擎状态 ]</b>
-▸ 核心版本 : <code>v{VERSION}</code>
 ▸ 运行时长 : <code>{fmt_uptime(stats.start_time)}</code>
 
 <b>[ 拓扑矩阵 ]</b>
