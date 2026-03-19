@@ -47,7 +47,7 @@ async def send_sync_report(client, notify_channel, report, elapsed, cmd_prefix):
     for name in deleted: change_lines.append(f"  🗑️ 废弃剔除 <code>{html.escape(name)}</code>")
     change_block = "\n".join(change_lines) if change_lines else "  _(无拓扑结构变更)_"
     active_lines = [f"  ✅ <code>{html.escape(name)}</code> · {cnt} 个下级节点" for name, cnt in active.items()]
-    active_block = "\n".join(active_lines) if active_lines else "  _(无活跃管道)_"
+    active_block = "\n".join(active_lines) if active_lines else "  _(无活跃节点)_"
     status_line = "🔔 <b>云端拓扑已更新并生效</b>" if changed else "✅ <b>云端拓扑无实质变动</b>"
     
     msg = f"""🔄 <b>云端拓扑同步报告</b>
@@ -59,7 +59,7 @@ async def send_sync_report(client, notify_channel, report, elapsed, cmd_prefix):
 <b>[ 拓扑变更详情 ]</b>
 {change_block}
 ━━━━━━━━━━━━━━━━━━━━━
-<b>[ 活跃管道矩阵 ]</b>
+<b>[ 全量节点矩阵 ]</b>
 {active_block}
 ━━━━━━━━━━━━━━━━━━━━━
 💡 发送 <code>{html.escape(cmd_prefix)}enable &lt;管道名&gt;</code> 唤醒新节点"""
@@ -106,12 +106,14 @@ async def sync(client: TelegramClient, config: dict) -> tuple:
             config_changed = True
 
     new_cache = {}
-    all_dialogs = await client.get_dialogs(limit=None)
+    all_dialogs = []
+    async for d in client.iter_dialogs():
+        all_dialogs.append(d)
 
     for folder in tg_folders:
         tg_title = get_folder_title(folder)
-        folder_cfg = folder_rules.get(tg_title, {})
-        if not folder_cfg.get("enable", False): continue
+        
+        # 💥 修复了核心BUG：移除了对 enable 的判断，无条件写入 _system_cache 确保对齐
         target_ids, exclude_ids = set(), set()
 
         for peer in getattr(folder, "exclude_peers", []):
