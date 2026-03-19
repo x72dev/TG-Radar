@@ -243,12 +243,13 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
     async def control_panel(event):
         command = event.pattern_match.group(1).lower()
         args = (event.pattern_match.group(2) or "").strip()
-        try: await _dispatch(event, command, args, state, client, p, pe)
+        try: await _dispatch(event, command, args)
         except Exception as exc:
             try: await safe_reply(event, f"❌ <b>内部异常</b>：<code>{html.escape(str(exc))}</code>", 15)
             except: pass
 
-async def _dispatch(event, command: str, args: str, state: AppState, client: TelegramClient, p: str, pe: str):
+    # 修复缩进：将其重新放回 register_handlers 内部，对齐 4 个空格
+    async def _dispatch(event, command: str, args: str):
         if command == "help":
             await safe_reply(event, f"""🤖 <b>TG-Radar 极客控制台</b>
 
@@ -422,7 +423,7 @@ async def _dispatch(event, command: str, args: str, state: AppState, client: Tel
             try: await event.edit("🔄 <b>[ 拓扑云端全量同步 ]</b>\n> 正在执行热重载...")
             except: await event.reply("🔄 <b>[ 拓扑云端全量同步 ]</b>\n> 正在执行热重载...")
             import sync_engine
-            importlib.reload(sync_engine)  # 优雅的热重载
+            importlib.reload(sync_engine)
             cfg = _load_fresh_config()
             await auto_route_groups(client, cfg.get("auto_route_rules", {}))
             f_new, c_new, has_changes, report = await sync_engine.sync(client, cfg)
@@ -437,7 +438,6 @@ async def _dispatch(event, command: str, args: str, state: AppState, client: Tel
             with open(os.path.join(WORK_DIR, ".last_msg"), "w") as f:
                 json.dump({"chat_id": event.chat_id, "msg_id": reply_msg.id, "action": "update"}, f)
             await asyncio.sleep(1)
-            # 增加更新 local .commit_sha，解决 CLI 终端循环提示有更新的问题
             cmd = f"curl -fsSL https://github.com/chenmo8848/TG-Radar/archive/refs/heads/main.zip -o /tmp/tgr.zip && unzip -q -o /tmp/tgr.zip -d /tmp/ && cp -af /tmp/TG-Radar-main/. {WORK_DIR}/ && rm -rf /tmp/tgr.zip /tmp/TG-Radar-main && curl -fsSL https://api.github.com/repos/chenmo8848/TG-Radar/commits/main | python3 -c \"import sys,json; print(json.load(sys.stdin).get('sha',''))\" > {WORK_DIR}/.commit_sha"
             subprocess.run(cmd, shell=True)
             subprocess.Popen(["sudo", "systemctl", "restart", SERVICE_NAME])
@@ -449,6 +449,7 @@ async def _dispatch(event, command: str, args: str, state: AppState, client: Tel
             await asyncio.sleep(1.5)
             subprocess.Popen(["sudo", "systemctl", "restart", SERVICE_NAME])
 
+    # 修复缩进：对齐 4 个空格
     @client.on(events.NewMessage)
     async def message_handler(event):
         try:
