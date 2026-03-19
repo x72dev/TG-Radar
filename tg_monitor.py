@@ -7,6 +7,9 @@ from telethon import TelegramClient, events, functions, types, utils
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger(__name__)
 
+# 🛡️ 核心屏蔽墙：彻底封印 Telethon 底层的刷屏日志 (如 Got difference for channel)
+logging.getLogger('telethon').setLevel(logging.WARNING)
+
 WORK_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(WORK_DIR, "config.json")
 SESSION_NAME = os.path.join(WORK_DIR, "TG_Radar_session")
@@ -206,7 +209,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                 except: pass
             asyncio.create_task(schedule_delete())
 
-    # 🛡️ 终极权限锁定：仅监听 Saved Messages (收藏夹) 
+    # 🛡️ 终极权限锁定：仅监听 Saved Messages (收藏夹)
     @client.on(events.NewMessage(chats=["me"], pattern=cmd_regex))
     async def control_panel(event):
         command = event.pattern_match.group(1).lower()
@@ -220,7 +223,8 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
         if command == "help":
             await _respond(event, f"""🤖 <b>TG-Radar 核心控制台</b>
 <code>{p}ping</code> 心跳探测 | <code>{p}status</code> 监控大屏
-<code>{p}folders</code> 活跃管道 | <code>{p}rules &lt;分组&gt;</code> 策略明细
+<code>{p}log [n]</code> 系统日志 | <code>{p}folders</code> 活跃管道
+<code>{p}rules &lt;分组&gt;</code> 策略明细
 <code>{p}enable/disable &lt;分组&gt;</code> 唤醒/休眠管道
 <code>{p}addrule &lt;分组&gt; &lt;规则名&gt; &lt;词&gt;</code> 挂载正则
 <code>{p}delrule &lt;分组&gt; &lt;规则名&gt; [词]</code> 剥离正则
@@ -240,6 +244,53 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
 ▸ 累计拦截 : <code>{state.total_hits}</code> 次
 ▸ 最新捕获 : {last}""", auto_delete=20)
             
+        elif command == "log":
+            try: await event.edit("⏳ <b>获取日志中...</b>")
+            except: pass
+            n_lines = 20
+            if args:
+                try: n_lines = max(1, min(100, int(args)))
+                except ValueError: return await _respond(event, f"❌ 行数参数无效：`{args}`")
+            try:
+                import html as _html
+                import re as _re
+                # 扩大抓取范围，以弥补被清洗掉的垃圾日志
+                raw = subprocess.check_output(
+                    ["journalctl", "-u", SERVICE_NAME, f"-n{n_lines*4}", "--no-pager", "--output=short-iso"],
+                    text=True, stderr=subprocess.STDOUT
+                )
+                lines_out = []
+                for line in raw.splitlines():
+                    if line.startswith("--") or not line.strip(): continue
+                    msg = line.split("]: ", 1)[-1] if "]: " in line else line
+                    
+                    # 🗑️ 垃圾日志强力清洗：剔除所有无价值的网络同步和底层状态
+                    if any(x in msg for x in ["Got difference for channel", "Connecting to", "Connection to", "TcpFull"]):
+                        continue
+                        
+                    try:
+                        m = _re.match(r"^\d{4}-\d{2}-\d{2} (\d{2}:\d{2}:\d{2}) \[(\w+)\] (.*)", msg.strip())
+                        if m:
+                            time_str, level, msg_content = m.groups()
+                            icon = {"INFO": "ℹ️", "WARNING": "⚠️", "ERROR": "❌", "DEBUG": "🔍"}.get(level, "·")
+                            lines_out.append(f"{icon} <code>{time_str}</code> {_html.escape(msg_content)}")
+                        else:
+                            if len(msg) < 200: lines_out.append(f"· {_html.escape(msg)}")
+                    except: pass
+                
+                # 精准截断到用户请求的行数
+                lines_out = lines_out[-n_lines:]
+                if not lines_out: return await _respond(event, "📜 <b>日志</b> · 暂无可读的业务记录")
+                
+                log_body = "\n".join(lines_out)
+                if len(log_body) > 3600: log_body = "…（已截断）\n" + log_body[-3500:]
+                
+                html_msg = f"📜 <b>系统核心日志</b> · 最新 {len(lines_out)} 条\n<blockquote expandable>{log_body}</blockquote>"
+                try: await event.edit(html_msg, parse_mode='html')
+                except: await event.reply(html_msg, parse_mode='html')
+            except Exception as e:
+                await _respond(event, f"❌ 获取日志失败: `{e}`")
+
         elif command == "folders":
             lines, enabled_cnt = [], 0
             for name, cfg in state.folder_rules.items():
