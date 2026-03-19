@@ -231,7 +231,8 @@ async def route_task_worker(client):
         await asyncio.sleep(4)
 
 async def auto_route_groups(client, auto_route_rules) -> dict:
-    report = {"queued": {}, "missing": [], "matched_zero": [], "already_in": {}, "created": []}
+    # 🔥 修复了 errors 键丢失导致 KeyError 的 bug
+    report = {"queued": {}, "missing": [], "matched_zero": [], "already_in": {}, "created": [], "errors": {}}
     if not auto_route_rules: return report
     
     try:
@@ -481,7 +482,6 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             if len(parts) < 2: return await safe_reply(event, f"❓ 语法: {pe}addroute 分组名 匹配词1 [匹配词2...]", 15)
             folder_name, raw_pattern = parts[0].strip(), parts[1].strip()
             
-            # 🔥 傻瓜化处理：如果用户用空格分隔，全自动转成正则的“或者”逻辑
             if " " in raw_pattern and "|" not in raw_pattern and not raw_pattern.startswith("^"):
                 words = [re.escape(w) for w in raw_pattern.split() if w.strip()]
                 regex = "(" + "|".join(words) + ")"
