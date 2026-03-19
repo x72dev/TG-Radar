@@ -6,8 +6,6 @@ from telethon import TelegramClient, events, functions, types, utils
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger(__name__)
-
-# 🛡️ 彻底封印 Telethon 底层垃圾日志
 logging.getLogger('telethon').setLevel(logging.WARNING)
 
 WORK_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -21,10 +19,8 @@ def write_biz_log(action: str, detail: str):
     icon = {"HIT": "🎯", "SYNC": "🔄", "SYS": "⚙️", "ERR": "❌"}.get(action, "·")
     log_line = f"{icon} [{time_str}] {detail}\n"
     try:
-        with open(MONITOR_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(log_line)
-    except Exception as e:
-        logger.error(f"写入业务日志失败: {e}")
+        with open(MONITOR_LOG_PATH, "a", encoding="utf-8") as f: f.write(log_line)
+    except Exception as e: logger.error(f"写入业务日志失败: {e}")
 
 async def schedule_delete(msg, delay: int):
     if not msg or delay <= 0: return
@@ -194,8 +190,7 @@ async def send_startup_notification(client, notify_channel, state, cmd_prefix):
         try: msg_obj = await client.send_message(target, msg, link_preview=False)
         except: pass
         
-    if msg_obj:
-        asyncio.create_task(schedule_delete(msg_obj, 60))
+    if msg_obj: asyncio.create_task(schedule_delete(msg_obj, 60))
 
 def edit_config(modifier_fn) -> tuple:
     try:
@@ -219,14 +214,19 @@ async def apply_hot_reload(event, state: AppState, success_text: str, auto_delet
     await safe_reply(event, final_text, auto_delete)
 
 async def auto_route_groups(client, auto_route_rules) -> dict:
-    """ 执行路由动作并返回诊断报告 """
     report = {"added": {}, "missing": [], "matched_zero": [], "already_in": {}, "errors": {}}
     if not auto_route_rules: return report
     
     try:
         req = await client(functions.messages.GetDialogFiltersRequest())
         folders = [f for f in getattr(req, "filters", []) if isinstance(f, types.DialogFilter)]
-        dialogs = await client.get_dialogs(limit=None)
+        
+        # 🚀 底层升级：使用更彻底的迭代器，绝不遗漏你加入的任何一个群聊/频道
+        dialogs = []
+        async for d in client.iter_dialogs():
+            if d.is_group or d.is_channel:
+                name = utils.get_display_name(d.entity) or getattr(d, 'name', '') or getattr(d, 'title', '')
+                dialogs.append({'peer': utils.get_input_peer(d.entity), 'id': d.id, 'name': name})
 
         for folder_name, pattern_str in auto_route_rules.items():
             try: pattern = re.compile(pattern_str, re.IGNORECASE)
@@ -242,16 +242,13 @@ async def auto_route_groups(client, auto_route_rules) -> dict:
             matched_cnt = 0
             already_cnt = 0
 
-            # 精准匹配：同时支持 群组(is_group) 与 频道(is_channel)，严格依据标题(name)匹配
+            # 🎯 精准匹配：完全剥离了扩大范围的代码，严格只校验你加入的群组/频道名称
             for d in dialogs:
-                if (d.is_group or d.is_channel) and getattr(d, 'name', '') and pattern.search(d.name):
+                if d['name'] and pattern.search(d['name']):
                     matched_cnt += 1
-                    peer = utils.get_input_peer(d.entity)
-                    peer_id = utils.get_peer_id(peer)
-                    
-                    if peer_id not in current_peer_ids:
-                        to_add.append(peer)
-                        current_peer_ids.append(peer_id)
+                    if d['id'] not in current_peer_ids:
+                        to_add.append(d['peer'])
+                        current_peer_ids.append(d['id'])
                     else:
                         already_cnt += 1
 
@@ -266,7 +263,6 @@ async def auto_route_groups(client, auto_route_rules) -> dict:
             if not hasattr(target_folder, "include_peers"):
                 target_folder.include_peers = []
             
-            # Telegram 官方限制：单文件夹 100 个群组/频道
             if len(target_folder.include_peers) + len(to_add) > 100:
                 available = max(0, 100 - len(target_folder.include_peers))
                 to_add = to_add[:available]
@@ -295,8 +291,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
     async def control_panel(event):
         command = event.pattern_match.group(1).lower()
         args = (event.pattern_match.group(2) or "").strip()
-        try:
-            await _dispatch(event, command, args)
+        try: await _dispatch(event, command, args)
         except Exception as exc:
             try: await safe_reply(event, f"❌ <b>内部异常</b>：<code>{html.escape(str(exc))}</code>", 15)
             except: pass
@@ -348,22 +343,15 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             try: await event.edit("⏳ <b>读取持久化日志中...</b>")
             except: pass
             n_lines = 20
-            if args and args.isdigit():
-                n_lines = max(1, min(100, int(args)))
+            if args and args.isdigit(): n_lines = max(1, min(100, int(args)))
             try:
                 if not os.path.exists(MONITOR_LOG_PATH):
                     return await safe_reply(event, "📜 <b>纯净业务日志</b> · 暂无本地记录", 15)
-                
-                with open(MONITOR_LOG_PATH, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-                
+                with open(MONITOR_LOG_PATH, "r", encoding="utf-8") as f: lines = f.readlines()
                 lines_out = lines[-n_lines:]
-                if not lines_out:
-                    return await safe_reply(event, "📜 <b>纯净业务日志</b> · 暂无记录", 15)
-                
+                if not lines_out: return await safe_reply(event, "📜 <b>纯净业务日志</b> · 暂无记录", 15)
                 log_body = "".join(lines_out).strip()
                 if len(log_body) > 3600: log_body = "…（已截断）\n" + log_body[-3500:]
-                
                 html_msg = f"📜 <b>系统核心日志</b> · 最近 {len(lines_out)} 条\n<blockquote expandable>{html.escape(log_body)}</blockquote>"
                 await safe_reply(event, html_msg, auto_delete=60)
             except Exception as e:
@@ -454,22 +442,27 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             
             report = await auto_route_groups(client, {folder_name: regex})
             
+            # 🔥 修复_system_cache漏洞：路由完毕后立刻强制刷入缓存，让你立马能看到变化
+            import sync_engine
+            importlib.reload(sync_engine)
+            cfg = _load_fresh_config()
+            f_new, c_new, _, _ = await sync_engine.sync(client, cfg)
+            cfg["folder_rules"], cfg["_system_cache"] = f_new, c_new
+            _save_config(cfg)
+            state.hot_reload(f_new, c_new, cfg.get("auto_route_rules", {}))
+
             msg = f"✅ <b>[ 智能路由已挂载 ]</b>\n▸ <b>目标分组</b> : <code>{html.escape(folder_name)}</code>\n\n🔍 <b>[ 立即执行诊断报告 ]</b>"
-            
             if folder_name in report["missing"]:
                 msg += f"\n⚠️ <b>找不到文件夹</b>\n请先去 TG 客户端手动新建名为 <code>{html.escape(folder_name)}</code> 的文件夹，否则系统无法凭空把群组放进去！"
             elif folder_name in report["matched_zero"]:
-                msg += "\n🔕 <b>零匹配</b>\n您的正则未精准匹配到任何群组或频道标题，请检查正则是否写对。"
+                msg += "\n🔕 <b>零匹配</b>\n你的账号目前没有加入任何匹配该正则的群组/频道。"
             elif folder_name in report["errors"]:
                 msg += f"\n❌ <b>API 更新失败</b>\nTG服务器拒绝了操作: <code>{html.escape(report['errors'][folder_name])}</code>"
             else:
                 added = report["added"].get(folder_name, 0)
                 already = report["already_in"].get(folder_name, 0)
-                if added > 0:
-                    msg += f"\n🔀 <b>成功收纳</b>: {added} 个会话已被精准移入。"
-                    if already > 0: msg += f" (另有 {already} 个会话已经在其中)"
-                else:
-                    msg += f"\n✅ <b>无需操作</b>: 精准匹配到的 {already} 个会话都已经安稳地躺在该分组里了。"
+                if added > 0: msg += f"\n🔀 <b>成功收纳</b>: {added} 个会话已被精准移入。"
+                if already > 0: msg += f" (另有 {already} 个会话已经在其中)"
 
             await apply_hot_reload(event, state, msg, 25)
 
@@ -491,27 +484,22 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             report = await auto_route_groups(client, cfg.get("auto_route_rules", {}))
             f_new, c_new, has_changes, sync_report = await sync_engine.sync(client, cfg)
             
+            cfg["folder_rules"], cfg["_system_cache"] = f_new, c_new
+            _save_config(cfg)
+            state.hot_reload(f_new, c_new, cfg.get("auto_route_rules", {}))
+            
             if has_changes or report["added"]:
-                cfg["folder_rules"], cfg["_system_cache"] = f_new, c_new
-                _save_config(cfg)
-                state.hot_reload(f_new, c_new, cfg.get("auto_route_rules", {}))
                 write_biz_log("SYNC", "手动触发同步：拓扑与路由已更新并热重载")
             else:
                 write_biz_log("SYNC", "手动触发同步：云端拓扑无实质变动")
                 
             msg = "✅ <b>拓扑云端同步完成</b>\n"
-            
             if report["added"] or report["missing"] or report["errors"] or report["matched_zero"]:
                 msg += "\n🔀 <b>[ 智能路由诊断 ]</b>\n"
-                for fn, cnt in report["added"].items():
-                    msg += f"  ▸ <code>{html.escape(fn)}</code> : 新收纳 {cnt} 个会话\n"
-                for fn in report["missing"]:
-                    msg += f"  ▸ <code>{html.escape(fn)}</code> : ⚠️ 找不到对应TG文件夹\n"
-                for fn in report["matched_zero"]:
-                    msg += f"  ▸ <code>{html.escape(fn)}</code> : 🔍 正则未命中任何会话\n"
-                for fn, err in report["errors"].items():
-                    msg += f"  ▸ <code>{html.escape(fn)}</code> : ❌ API拒绝更新\n"
-            
+                for fn, cnt in report["added"].items(): msg += f"  ▸ <code>{html.escape(fn)}</code> : 新收纳 {cnt} 个会话\n"
+                for fn in report["missing"]: msg += f"  ▸ <code>{html.escape(fn)}</code> : ⚠️ 找不到对应TG文件夹\n"
+                for fn in report["matched_zero"]: msg += f"  ▸ <code>{html.escape(fn)}</code> : 🔍 正则未命中任何会话\n"
+                for fn, err in report["errors"].items(): msg += f"  ▸ <code>{html.escape(fn)}</code> : ❌ API拒绝更新\n"
             msg += "\n⚡ <b>系统拓扑缓存已对齐</b>"
             await safe_reply(event, msg, 25)
 
@@ -565,7 +553,6 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                         state.total_hits += 1
                         state.last_hit_folder = task["folder_name"]
                         state.last_hit_time = datetime.now()
-                        
                         write_biz_log("HIT", f"关键词: {match.group(0)} | 管道: {task['folder_name']} | 来源: {chat_title}")
                     except: pass
                     break
@@ -575,7 +562,6 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
 async def main():
     config = load_config()
     api_id, api_hash, global_alert, notify_channel, cmd_prefix, auto_route = validate_config(config)
-    
     _save_config(config)
 
     state = AppState()
@@ -604,7 +590,6 @@ async def main():
                     logger.error("内部巡检异常: %s", e)
 
         asyncio.create_task(internal_auto_sync())
-        
         register_handlers(client, state, notify_channel, cmd_prefix)
         await send_startup_notification(client, notify_channel, state, cmd_prefix)
         write_biz_log("SYS", "系统服务主进程启动完成")
