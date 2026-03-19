@@ -4,7 +4,7 @@
 
 <br/>
 
-<a href="https://github.com/chenmo8848/TG-Radar/releases"><img src="https://img.shields.io/github/v/release/chenmo8848/TG-Radar?style=for-the-badge&logo=github&color=0d1117&labelColor=161b22&label=Latest"/></a>
+<a href="https://github.com/chenmo8848/TG-Radar/releases"><img src="https://img.shields.io/github/v/release/chenmo8848/TG-Radar?style=for-the-badge&logo=github&color=0d1117&labelColor=161b22&label=v5.1.1"/></a>
 &nbsp;
 <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white&labelColor=161b22"/>
 &nbsp;
@@ -16,8 +16,7 @@
 
 <br/><br/>
 
-**实时监控 Telegram 群组关键词，命中即推送告警。**  
-**部署一次，此后全靠手机管理，永不需要再登服务器。**
+**实时监控 Telegram 群组关键词，命中即推送告警。** **部署一次，此后全靠手机管理，永不需要再登服务器。**
 
 <br/>
 
@@ -33,20 +32,16 @@
 <tr>
 <td width="50%" valign="top">
 
-**🎯 实时关键词监控**  
-纯空格自然语言指令引擎，后台 AI 级自动去重、合并与剔除。物理拦截 Bot，命中延迟 < 1s。
+**🎯 实时关键词监控** 纯空格自然语言指令引擎，后台 AI 级自动去重、合并与剔除。物理拦截 Bot，命中延迟 < 1s。
 
-**📱 ChatOps 管理**  
-在告警频道或 Saved Messages 发送指令即可管理。指令触发后消息**原地编辑**为结果，聊天界面保持整洁。
+**📱 ChatOps 极客管理** 在告警频道发送指令即可管理全站。支持官方最新 `<blockquote expandable>` 长文自动折叠排版，全中文极简 UI 态势大屏。
 
 </td>
 <td width="50%" valign="top">
 
-**🔄 自愈同步引擎**  
-定时从 Telegram 云端拉取分组结构，自动处理改名 / 新增 / 删除，联动更新规则名称。
+**🔄 自愈同步引擎** 定时从 Telegram 云端无缝拉取分组结构，自动处理改名 / 新增 / 删除，全量热重载不断线。
 
-**🔔 智能更新检测**  
-每次执行 `TGR` 时静默检查版本。有新版本直接进入更新引导；已是最新则无任何额外交互，直接进菜单。
+**🔔 智能部署管家** 内置 `TGR` 全局管家。一键安装、静默版本更新比对、进程防波及重启、防正则注入保护，彻底解放运维。
 
 </td>
 </tr>
@@ -66,7 +61,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/chenmo8848/TG-Radar/main/ins
 
 ## 📖 使用流程
 
-```
+```text
 TGR
  │
  ├─ 检测到新版本 ──→  更新引导界面
@@ -87,9 +82,9 @@ TGR
 
 **一键部署（选项 1）** 全程引导，无需手动操作：
 
-- **阶段二** 自动连接 Telegram，列出所有分组和频道，引导选择
-- 分组、群组 ID、告警频道 **全部自动写入** `config.json` 和 `_system_cache`
-- 无需任何手动查询 ID
+- **阶段二** 自动连接 Telegram，列出所有分组和频道，引导选择。
+- 管道分组、群组 ID、告警频道 **全部自动写入** `config.json` 和 `_system_cache`。
+- 无需手动抓取任何繁琐的 ID。
 
 ---
 
@@ -98,76 +93,76 @@ TGR
 在**告警频道**或 **Saved Messages** 发送指令。  
 默认前缀 `-`，可在 `config.json → cmd_prefix` 修改。
 
-> **edit-in-place**：指令触发后原地编辑为 ⏳，处理完成后再次编辑为最终结果。
+> **edit-in-place**：指令触发后原地编辑为 ⏳ 处理中，完成后自动更新为最终结果大屏。
 
 <details open>
-<summary><b>📊 查询</b></summary>
+<summary><b>📊 态势观测</b></summary>
 
 | 指令 | 说明 |
 |------|------|
-| `-help` | 指令菜单 |
-| `-ping` | 心跳 · 在线时长 · 累计命中 |
-| `-status` | 状态报告（群组 / 规则 / 分组 / 命中） |
-| `-log [n]` | 系统日志，默认 20 行，最多 100 |
-| `-folders` | 所有分组概览 |
-| `-rules <分组名>` | 指定分组的规则列表 |
+| `-help` | 呼出核心控制台 |
+| `-ping` | 节点心跳与存活探测 |
+| `-status` | 全局监控态势大屏 |
+| `-log [n]` | 提取系统核心运行日志 (支持超长折叠) |
+| `-folders` | 检视数据管道拓扑矩阵 |
+| `-rules <分组名>` | 查看指定管道的策略明细 |
 
 </details>
 
 <details>
-<summary><b>⚙️ 配置（自动重启生效）</b></summary>
+<summary><b>🛡️ 策略引擎（纯空格传参，自动防注入）</b></summary>
 
 | 指令 | 说明 |
 |------|------|
-| `-enable <分组名>` | 启用分组监控 |
-| `-disable <分组名>` | 停止分组监控 |
-| `-addrule <分组> <规则> <词1> [词...]` | 智能挂载/追加规则（AI 级自动去重合并） |
-| `-delrule <分组> <规则> [词1...]` | 精准剔除词汇（参数为空则整体销毁） |
-| `-setalert <分组> <频道ID>` | 设置分组专属告警频道 |
-| `-setglobal <频道ID>` | 更新全局告警频道 |
+| `-enable <分组名>` | 唤醒挂起的数据管道 |
+| `-disable <分组名>` | 休眠活跃的数据管道 |
+| `-addrule <分组> <规则> <词1> [词2]` | 智能策略挂载 (自动去重与正则合并) |
+| `-delrule <分组> <规则> [词1]` | 精准策略剥离 (参数空则整体废弃) |
+| `-setalert <分组> <频道ID>` | 分配独立告警路由 |
+| `-setglobal <频道ID>` | 更新全局默认路由 |
 
 </details>
 
 <details>
-<summary><b>🔧 系统</b></summary>
+<summary><b>⚙️ 系统底层</b></summary>
 
 | 指令 | 说明 |
 |------|------|
-| `-sync` | 立即触发云端分组同步 |
-| `-restart` | 重启监控服务 |
+| `-sync` | 强制云端拓扑全量同步 |
+| `-restart` | 热重启核心守护进程 |
 
 </details>
-
-> 💡 **NLP 智能引擎**：全指令采用纯空格分隔，彻底告别标点符号；分组名支持模糊匹配。
 
 ---
 
-## 📨 告警卡片
+## 📨 告警卡片交互
 
 ```text
-🚨 [ 关键词触发告警 ]
-> 命中词汇 : 卖房
-> 触发策略 : 紧急 (商机监控)
-> 情报来源 : 某房产交流群
-> 目标载体 : @username
-> 捕获时间 : 14:32:05
+🚨 [ 情报雷达告警 ]
 
-[ 消息快照 ]
-有套房子急售，280万，随时看房，全款还能谈...
+🎯 触发关键词 : 卖房
+🏷️ 命中策略 : 紧急 (商机监控)
+📡 情报来源 : 某房产交流群
+👤 发送载体 : @username
+⏱ 捕获时间 : 14:32:05
+
+[ 现场原始快照 ]
+> 有套房子急售，280万，随时看房，全款还能谈...
+> (此处支持长文自动折叠 Read more...)
 
 🔗 [直达核心现场](https://t.me/c/1234567/8899)
 ```
 
 ---
 
-## 📬 消息路由
+## 📬 消息路由流向
 
 | 消息类型 | 推送目标 |
 |---------|---------|
-| 🚀 上线通知 | Saved Messages |
-| 🔄 同步报告 | Saved Messages |
-| 🎯 告警推送 | 各分组配置的告警频道 |
-| 💬 ChatOps 回复 | 原地编辑发出指令的消息 |
+| 🚀 引擎上线通知 | Saved Messages |
+| 🔄 拓扑同步报告 | Saved Messages |
+| 🚨 监控告警推送 | 各分组配置的独立告警频道 |
+| 💬 ChatOps 回复 | 原地编辑发出指令的消息卡片 |
 
 ---
 
@@ -175,15 +170,18 @@ TGR
 
 `/root/TG-Radar/config.json`
 
-```jsonc
+> **注意**：标准 JSON 不支持 `//` 注释，程序使用 `_note_` 字段进行安全注记。
+
+```json
 {
-    "api_id"   : 123456,                      // my.telegram.org
-    "api_hash" : "xxxxxxxxxxxxxxxxxxxxxxxx",   // my.telegram.org
-    "global_alert_channel_id" : -100123456789, // 全局告警频道
-    "notify_channel_id"       : null,          // 系统通知（null = 同告警频道）
-    "cmd_prefix"              : "-",           // 指令前缀
-    "folder_rules"  : {},                      // 自动维护
-    "_system_cache" : {}                       // 自动维护
+    "api_id": 123456,
+    "api_hash": "xxxxxxxxxxxxxxxxxxxxxxxx",
+    "_note_channels": "下面是全局与系统告警频道ID",
+    "global_alert_channel_id": -100123456789,
+    "notify_channel_id": null,
+    "cmd_prefix": "-",
+    "folder_rules": {},
+    "_system_cache": {}
 }
 ```
 
@@ -191,22 +189,22 @@ TGR
 
 ## 🗂️ 目录结构
 
-```
+```text
 /root/TG-Radar/
 ├── tg_monitor.py         核心守护进程
 ├── sync_engine.py        自愈同步引擎
-├── config.json           配置文件
-├── deploy.sh             管理脚本 (TGR)
-├── TG_Radar_session.*    登录凭证 (auto)
-└── venv/                 Python 环境 (auto)
+├── config.json           配置文件 (动态生成)
+├── deploy.sh             部署管家核心逻辑
+├── TG_Radar_session.* 登录凭证 (安全隔离)
+└── venv/                 Python 虚拟环境
 
-/usr/local/bin/TGR                       全局命令
-/etc/systemd/system/tg_monitor.service   系统服务
+/usr/local/bin/TGR                       系统级全局命令
+/etc/systemd/system/tg_monitor.service   Systemd 守护服务
 ```
 
 ---
 
-## 🗑️ 卸载
+## 🗑️ 完全卸载
 
 ```bash
 TGR  # 选择 7  完全卸载
