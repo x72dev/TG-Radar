@@ -263,7 +263,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
 <code>{p}enable 分组名</code> 唤醒管道
 <code>{p}disable 分组名</code> 休眠管道
 <code>{p}addrule 分组名 规则名 正则</code> 挂载规则
-<code>{p}delrule 分组名 规则名 [正则]</code> 剔除规则
+<code>{p}delrule 分组名 规则名 正则</code> 剔除规则
 
 <b>[ 智能路由 ]</b>
 <code>{p}routes</code> 路由矩阵
