@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-#  TG-Radar  —  Management Script
+#  TG-Radar  —  Management Script (Pure Asyncio Version)
 #  Path : /root/TG-Radar
 #  Cmd  : TGR
 # ============================================================
@@ -33,7 +33,7 @@ MON_BIN="$APP_DIR/tg_monitor.py"
 PY="$APP_DIR/venv/bin/python3"
 TGR_CMD="/usr/local/bin/TGR"
 REPO="chenmo8848/TG-Radar"
-COMMIT_FILE="$APP_DIR/.commit_sha" # [系统保留] 用于记录当前运行的 Commit Hash
+COMMIT_FILE="$APP_DIR/.commit_sha"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── Helpers ──────────────────────────────────────────────────
@@ -59,16 +59,13 @@ _try_start() {
 _startup_update_check() {
     local api_res remote_sha local_sha short_remote short_local dl_url
     
-    # 获取 GitHub main 分支最新 commit (3 秒超时，防止无网络卡死)
     api_res=$(curl -fsSL --connect-timeout 3 "https://api.github.com/repos/${REPO}/commits/main" 2>/dev/null) || return 0
     remote_sha=$(echo "$api_res" | python3 -c "import sys,json; print(json.load(sys.stdin).get('sha',''))" 2>/dev/null)
     [ -z "$remote_sha" ] && return 0
     
-    # 获取本地记录的 commit
     local_sha=""
     [ -f "$COMMIT_FILE" ] && local_sha=$(cat "$COMMIT_FILE")
     
-    # 如果 Hash 一致，则静默跳过
     if [ "$remote_sha" = "$local_sha" ]; then return 0; fi
 
     short_remote=${remote_sha:0:7}
@@ -80,7 +77,7 @@ _startup_update_check() {
     echo -e "  最新提交:  ${TAG_OK} ${short_remote} ${RESET}\n"
     _bar
     echo ""
-    echo -e "  ${BOLD}${GREEN}1${RESET}  快速拉取同步  ${DIM}(平滑覆盖源码并自动重启服务，配置完全保留)${RESET}"
+    echo -e "  ${BOLD}${GREEN}1${RESET}  快速拉取同步  ${DIM}(平滑覆盖源码并自动热重启服务，配置保留)${RESET}"
     echo -e "  ${BOLD}${CYAN}2${RESET}  重走部署向导  ${DIM}(更新源码后重新执行完整配置流程)${RESET}"
     echo -e "  ${BOLD}3${RESET}  跳过更新      ${DIM}(本次忽略)${RESET}"
     echo ""
@@ -94,25 +91,14 @@ _startup_update_check() {
             dl_url="https://github.com/${REPO}/archive/refs/heads/main.zip"
             
             if curl -fsSL "$dl_url" -o /tmp/tgr_main_update.zip 2>/dev/null; then
-                # 备份核心配置
                 [ -f "$APP_DIR/config.json" ] && cp "$APP_DIR/config.json" /tmp/_tgr_cfg.bak
-                
-                # 解压并清理包装文件夹
                 rm -rf /tmp/TG-Radar-main
                 unzip -q -o /tmp/tgr_main_update.zip -d /tmp/ 2>/dev/null
-                
-                # 强制覆盖文件，但不删除原目录中未跟踪的 session 文件
                 cp -af /tmp/TG-Radar-main/. "$APP_DIR/" 2>/dev/null
-                
-                # 还原配置并清理临时文件
                 [ -f /tmp/_tgr_cfg.bak ] && cp /tmp/_tgr_cfg.bak "$APP_DIR/config.json" && rm -f /tmp/_tgr_cfg.bak
                 rm -rf /tmp/tgr_main_update.zip /tmp/TG-Radar-main
-                
                 chmod +x "$APP_DIR/deploy.sh" "$APP_DIR/install.sh" 2>/dev/null || true
-                
-                # 更新本地 Hash 记录
                 echo "$remote_sha" > "$COMMIT_FILE"
-                
                 _ok "已同步至最新提交 [${short_remote}]"
                 echo ""
                 
@@ -145,16 +131,14 @@ _startup_update_check() {
 _startup_update_check
 
 # ============================================================
-#  Main menu (现代化重构)
+#  Main menu
 # ============================================================
 _menu() {
     clear
     echo -e "\n${MAIN}${BOLD} ▌ TG-RADAR 核心控制台 ${RESET}"
     echo -e "${MAIN} │${RESET}"
 
-    # --- 状态树 ---
     echo -e "${MAIN} ├─ ${BOLD}${TEXT}系统引擎状态${RESET}"
-    
     if _svc_active; then
         echo -e "${MAIN} │  ${DIM}守护进程    ${RESET}${TAG_OK}  运行中  ${RESET}"
     elif _svc_enabled; then
@@ -178,16 +162,12 @@ _menu() {
     fi
     
     echo -e "${MAIN} │${RESET}"
-
-    # --- 操作树 ---
     echo -e "${MAIN} ├─ ${BOLD}${TEXT}执行指令${RESET}"
     echo -e "${MAIN} │  ${BOLD}1${RESET}  一键全自动部署"
     echo -e "${MAIN} │  ${BOLD}2${RESET}  平滑停止服务"
     echo -e "${MAIN} │  ${BOLD}3${RESET}  启动守护进程"
     echo -e "${MAIN} │  ${BOLD}4${RESET}  重启雷达引擎"
     echo -e "${MAIN} │${RESET}"
-    
-    # --- 维护树 ---
     echo -e "${MAIN} ├─ ${BOLD}${TEXT}进阶维护${RESET}"
     echo -e "${MAIN} │  ${BOLD}5${RESET}  查看状态与实时日志"
     echo -e "${MAIN} │  ${BOLD}6${RESET}  刷新监听账号授权"
@@ -203,13 +183,7 @@ _deploy() {
     echo -e "${BOLD}  ╚══════════════════════════════════════════════════════╝${RESET}"
     echo ""; echo -e "  ${DIM}阶段一  系统环境  ·  阶段二  填写配置  ·  阶段三  授权启动${RESET}"; echo ""
 
-    read -rp "  自动同步间隔（分钟，回车=30，1440=每天）：" _mins
-    _mins="${_mins:-30}"
-    if ! [[ "$_mins" =~ ^[0-9]+$ ]] || [ "$_mins" -lt 1 ]; then _w "无效，使用默认值 30 分钟。"; _mins=30; fi
-    if   [ "$_mins" -ge 1440 ]; then _DAYS=$(( _mins / 1440 )); _CRON="0 0 */$_DAYS * *"; echo -e "  同步周期  ${BOLD}每 ${_DAYS} 天${RESET}"
-    elif [ "$_mins" -ge 60 ]; then _HRS=$(( _mins / 60 )); _CRON="0 */$_HRS * * *"; echo -e "  同步周期  ${BOLD}每 ${_HRS} 小时${RESET}"
-    else _CRON="*/$_mins * * * *"; echo -e "  同步周期  ${BOLD}每 ${_mins} 分钟${RESET}"; fi
-    echo ""; read -rp "  按回车开始，Ctrl+C 取消 ：" _DUMMY; echo ""
+    read -rp "  按回车开始，Ctrl+C 取消 ：" _DUMMY; echo ""
 
     _bar; echo -e "  ${BOLD}阶段一  系统环境${RESET}"; _bar; echo ""
     declare -a _RES=(); _PASS=0; _TOTAL=5
@@ -233,18 +207,17 @@ _deploy() {
         systemctl daemon-reload && systemctl enable '$SVC' >/dev/null 2>&1
     "
 
-    # 【终极修复】采用 mktemp 接管 cron 注入，免疫管线截断
-    _step 5 "写入 Cron & 注册 TGR" bash -c "
+    # 剔除原有 cron 逻辑，仅保留日志清理，并赋予 TGR 命令执行权限
+    _step 5 "注册 TGR 与清理历史任务" bash -c "
+        printf '#!/bin/bash\nexec bash /root/TG-Radar/deploy.sh \"\$@\"\n' > '$TGR_CMD'
+        chmod +x '$TGR_CMD'
         tmp_cron=\$(mktemp)
         crontab -l > \"\$tmp_cron\" 2>/dev/null || true
         sed -i '/sync_engine\.py/d' \"\$tmp_cron\" 2>/dev/null || true
         sed -i '/journalctl.*vacuum/d' \"\$tmp_cron\" 2>/dev/null || true
-        echo '$_CRON $PY $SYNC_BIN > /dev/null 2>&1' >> \"\$tmp_cron\"
         echo '0 3 * * * journalctl --vacuum-time=1d >/dev/null 2>&1' >> \"\$tmp_cron\"
         crontab \"\$tmp_cron\"
         rm -f \"\$tmp_cron\"
-        printf '#!/bin/bash\nexec bash /root/TG-Radar/deploy.sh \"\$@\"\n' > '$TGR_CMD'
-        chmod +x '$TGR_CMD'
     "
 
     echo ""; _bar; echo -e "  阶段一结果  ${_PASS}/${_TOTAL} 完成"; _bar
@@ -264,10 +237,10 @@ _deploy() {
     else _fill_config; fi
 
     clear; echo ""; _bar; echo -e "  ${BOLD}阶段三  账号授权${RESET}"; _bar; echo ""
-    echo -e "  ${DIM}sync_engine.py 将登录账号、拉取分组、启动守护进程${RESET}\n"
+    echo -e "  ${DIM}sync_engine.py 将登录账号并拉取分组拓扑${RESET}\n"
     read -rp "  按回车开始，Ctrl+C 取消 ：" _DUMMY; echo ""
 
-    cd "$APP_DIR"; "$PY" "$SYNC_BIN"; local _exit=$?
+    cd "$APP_DIR"; "$PY" "$SYNC_BIN" --chatops; local _exit=$?
 
     echo ""; _bar; echo -e "  ${BOLD}最终验证${RESET}"; _bar; echo ""
     local _ok=true
@@ -290,7 +263,7 @@ _deploy() {
         local _pfx
         _pfx=$(python3 -c "import json; print(json.load(open('$APP_DIR/config.json')).get('cmd_prefix','-'))" 2>/dev/null || echo "-")
         echo ""; echo -e "  ${GREEN}${BOLD}全部完成！雷达已上线。${RESET}\n"
-        echo -e "  ${BOLD}在告警频道或 Saved Messages 发送指令：${RESET}"
+        echo -e "  ${BOLD}请在 Telegram 客户端的 [Saved Messages / 收藏夹] 中发送指令：${RESET}"
         echo -e "  ${CYAN}${_pfx}folders${RESET}  ${CYAN}${_pfx}enable <分组>${RESET}  ${CYAN}${_pfx}help${RESET}\n"
     else
         echo ""; _w "部分步骤未完成，请检查后重试选项 1。"
@@ -310,7 +283,7 @@ import json, os
 path = '$APP_DIR/config.json'
 cfg  = json.load(open(path, encoding='utf-8')) if os.path.exists(path) else {}
 cfg.update({'api_id': int('$_id'), 'api_hash': '$_hash'})
-for k,v in [('folder_rules',{}),('_system_cache',{}),('global_alert_channel_id',None),('notify_channel_id',None),('cmd_prefix','-')]:
+for k,v in [('folder_rules',{}),('_system_cache',{}),('global_alert_channel_id',None),('notify_channel_id',None),('cmd_prefix','-'),('auto_route_rules',{})]:
     cfg.setdefault(k,v)
 tmp = path+'.tmp'; json.dump(cfg,open(tmp,'w',encoding='utf-8'),indent=4,ensure_ascii=False); os.replace(tmp,path)
 PYEOF2
@@ -411,6 +384,7 @@ cfg['api_hash']                = '$_hash'
 cfg['global_alert_channel_id'] = int('$_alert_ch')
 cfg['notify_channel_id']       = $_notify_val if '$_notify_val' != 'null' else None
 cfg['cmd_prefix']              = '$_pfx'
+cfg.setdefault('auto_route_rules', {})
 fr={}; sc={}
 for i in sel:
     f=data['folders'][i]; t=f['title']
@@ -428,7 +402,7 @@ _stop() { clear; echo -e "\n  ${BOLD}停止服务${RESET}\n"; if ! _svc_active; 
 _start() { clear; echo -e "\n  ${BOLD}启动服务${RESET}\n"; [ ! -f "$SVC_FILE" ] && { _e "未安装。"; _pause; return; }; if _svc_active; then _w "已运行。"; _pause; return; fi; sudo systemctl start "$SVC" 2>/dev/null && sleep 1 || true; if _svc_active; then _ok "已启动。"; else _e "失败"; fi; _pause; }
 _restart() { clear; echo -e "\n  ${BOLD}重启服务${RESET}\n"; [ ! -f "$SVC_FILE" ] && { _e "未安装。"; _pause; return; }; sudo systemctl restart "$SVC" 2>/dev/null && sleep 1 || true; if _svc_active; then _ok "已重启。"; else _e "失败"; fi; _pause; }
 _status() { clear; echo -e "\n  ${BOLD}系统状态${RESET}\n"; _svc_active && echo -e "  ${GREEN}●${RESET} 服务运行中" || echo -e "  ${RED}○${RESET} 服务未运行"; journalctl -u "$SVC" -n 20 --no-pager 2>/dev/null || true; _pause; }
-_reauth() { clear; echo -e "\n  ${BOLD}重新授权${RESET}\n"; cd "$APP_DIR"; "$PY" "$SYNC_BIN"; [ $? -eq 0 ] && _ok "授权成功" || _e "失败"; _pause; }
+_reauth() { clear; echo -e "\n  ${BOLD}重新授权${RESET}\n"; cd "$APP_DIR"; "$PY" "$SYNC_BIN" --chatops; [ $? -eq 0 ] && _ok "授权成功" || _e "失败"; _pause; }
 _uninstall() { clear; echo -e "\n  ${BOLD}${RED}卸载服务${RESET}\n"; read -rp "  确认删除? (yes): " c; [ "$c" != "yes" ] && return; systemctl stop "$SVC" 2>/dev/null; systemctl disable "$SVC" 2>/dev/null; rm -f "$SVC_FILE"; rm -f "$TGR_CMD"; crontab -l | grep -v 'sync_engine' | crontab -; _ok "已卸载"; _pause; }
 
 while true; do
