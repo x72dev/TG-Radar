@@ -317,7 +317,6 @@ async def auto_route_groups(client, auto_route_rules) -> dict:
                 else:
                     already_cnt += 1
 
-            # 🛠️ 修复了满载截断导致的空任务入队 BUG
             if len(target_folder.include_peers) + len(to_add) > 100:
                 available = max(0, 100 - len(target_folder.include_peers))
                 to_add = to_add[:available]
@@ -397,9 +396,9 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             
             queue_size = ROUTE_QUEUE.qsize()
             if queue_size > 0:
-                q_info = f"\n· 队列任务：<code>有 {queue_size} 个群组正在排队等待加入分组</code> ⏳"
+                q_info = f"\n· 队列任务：<code>有 {queue_size} 个后台补充任务正在缓慢执行中</code> ⏳"
             else:
-                q_info = f"\n· 队列任务：<code>全部执行完毕 (空闲)</code> ✅"
+                q_info = f"\n· 队列任务：<code>全部执行完毕 (当前空闲)</code> ✅"
             
             await safe_reply(event, f"""📊 <b>TG-Radar 详细监控大屏</b>
 
@@ -413,8 +412,8 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
 · 正在监听的群：<code>{len(state.target_map)}</code> 个活跃群组/频道
 · 已加载的规则：<code>{state.valid_rules_count}</code> 条监控策略
 
-<b>🔀 自动路由调度</b>
-· 自动收纳规则：已设置 <code>{len(state.auto_route_rules)}</code> 条条件{q_info}
+<b>🔀 智能路由调度 (K8s 声明式对齐引擎)</b>
+· 自动收纳规则：已配置 <code>{len(state.auto_route_rules)}</code> 条收纳条件{q_info}
 
 <b>🛡️ 拦截成果统计</b>
 · 历史累计拦截：<code>{state.total_hits}</code> 次
@@ -531,12 +530,10 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             edit_config(do_addroute)
             write_biz_log("SYS", f"添加自动收纳规则: {folder_name}")
             
-            # 🛠️ 修复了竞态条件导致的幻觉缓存BUG：等待队列消费完毕再同步！
             await safe_reply(event, f"⏳ <b>正在为您扫描并自动添加群组...</b>\n<i>(系统会遵守 Telegram 接口频率限制缓慢添加，请耐心等待...)</i>", auto_delete=0)
             
             report = await auto_route_groups(client, {folder_name: regex})
-            if not ROUTE_QUEUE.empty():
-                await ROUTE_QUEUE.join() # 阻塞安全锁：等后台老老实实加完群！
+            if not ROUTE_QUEUE.empty(): await ROUTE_QUEUE.join()
             
             import sync_engine
             importlib.reload(sync_engine)
@@ -574,10 +571,8 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             importlib.reload(sync_engine)
             cfg = _load_fresh_config()
             
-            # 🛠️ 同样引入了阻塞安全锁，保证手动触发时数据的绝对可靠
             report = await auto_route_groups(client, cfg.get("auto_route_rules", {}))
-            if not ROUTE_QUEUE.empty():
-                await ROUTE_QUEUE.join()
+            if not ROUTE_QUEUE.empty(): await ROUTE_QUEUE.join()
                 
             f_new, c_new, has_changes, sync_report = await sync_engine.sync(client, cfg)
             
@@ -604,6 +599,10 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             await safe_reply(event, msg, 25)
 
         elif command == "update":
+            if not ROUTE_QUEUE.empty():
+                await event.edit(f"⏳ <b>等待内部队列安全清空...</b>\n后台还有排队中的收纳任务，系统将在执行完毕后自动开始拉取更新代码，请稍候...")
+                await ROUTE_QUEUE.join()
+
             reply_msg = await event.edit("🔄 <b>正在获取最新版程序...</b>")
             write_biz_log("SYS", "开始进行一键更新")
             if reply_msg:
@@ -615,6 +614,10 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             subprocess.Popen(["sudo", "systemctl", "restart", SERVICE_NAME])
 
         elif command == "restart":
+            if not ROUTE_QUEUE.empty():
+                await event.edit(f"⏳ <b>等待内部队列安全清空...</b>\n后台还有排队中的收纳任务，系统将在执行完毕后自动执行重启，请稍候...")
+                await ROUTE_QUEUE.join()
+
             reply_msg = await event.edit("🔄 <b>系统即将重启，请稍候...</b>")
             write_biz_log("SYS", "用户执行了重启系统")
             if reply_msg:
@@ -630,7 +633,6 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             msg_text = event.raw_text
             if not msg_text: return
             
-            # 🛠️ 修复了多重匹配重复报警的 BUG
             chat, chat_title, sender_name, sender_loaded = None, "", "", False
             already_alerted = False
             
@@ -689,11 +691,15 @@ async def main():
         asyncio.create_task(route_task_worker(client))
         
         async def internal_auto_sync():
+            await asyncio.sleep(5)  # 💎 开机先等待 5 秒钟，让开机通知顺利发送完毕
             while True:
-                await asyncio.sleep(1800)
                 try:
                     cfg = _load_fresh_config()
                     route_report = await auto_route_groups(client, cfg.get("auto_route_rules", {}))
+                    
+                    if not ROUTE_QUEUE.empty():
+                        await ROUTE_QUEUE.join()
+
                     import sync_engine
                     importlib.reload(sync_engine)
                     f_new, c_new, changed, _ = await sync_engine.sync(client, cfg)
@@ -701,10 +707,12 @@ async def main():
                         cfg["folder_rules"], cfg["_system_cache"] = f_new, c_new
                         _save_config(cfg)
                         state.hot_reload(f_new, c_new, cfg.get("auto_route_rules", {}))
-                        logger.info("后台自检：环境同步已完成。")
-                        write_biz_log("SYNC", "后台自动自检：配置已对齐")
+                        logger.info("系统：开机/定时环境同步已完成。")
+                        write_biz_log("SYNC", "状态核准：配置与实际群组对齐完毕")
                 except Exception as e:
-                    logger.error("后台自检出错: %s", e)
+                    logger.error("底层轮询出错: %s", e)
+                
+                await asyncio.sleep(1800) # 💎 修复完毕：放在最后，执行完所有的状态核准再睡 30 分钟！
 
         asyncio.create_task(internal_auto_sync())
         register_handlers(client, state, notify_channel, cmd_prefix)
