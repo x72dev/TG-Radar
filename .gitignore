@@ -3,46 +3,36 @@
 # ============================================================
 
 # --- 核心隐私与凭证 (绝对禁止上传) ---
-# 包含 API ID, Hash 和机器人 Token 的配置文件
 config.json
-# Telegram 登录生成的会话文件（拿到它就能登你账号）
 *.session
 *.session-journal
 
 # --- 敏感部署脚本 ---
-# 包含 GitHub Personal Access Token 的同步脚本
 push.sh
 
 # --- Python 运行环境 ---
-# 虚拟环境目录
 venv/
 .env
-# 编译后的字节码
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 *.db
 
-# --- 项目运行临时文件 ---
-# TG-Radar 特有的静默启动标记文件
+# --- 项目运行临时文件 (新增热重载状态隔离) ---
 .silent_start
-# 日志文件
+.last_msg
 *.log
 logs/
 
 # --- 操作系统与编辑器 ---
-# Windows 缩略图缓存
 Thumbs.db
-# macOS 系统文件
 .DS_Store
-# 编辑器配置
 .vscode/
 .idea/
 *.swp
 
 # --- 压缩包与打包文件 ---
-# 防止不小心把备份的压缩包传上去
 *.zip
 *.tar.gz
 *.7z
