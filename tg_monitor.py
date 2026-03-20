@@ -1,4 +1,4 @@
-import os, re, sys, json, asyncio, logging, subprocess, html, importlib, signal
+import os, re, sys, json, asyncio, logging, subprocess, html, importlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -111,7 +111,6 @@ def _save_config(cfg: dict) -> None:
     }
     tmp = CONFIG_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f: json.dump(desc_cfg, f, indent=4, ensure_ascii=False)
-    # 原子操作覆盖写入，防止死机导致配置损坏
     os.replace(tmp, CONFIG_PATH)
 
 def validate_config(config: dict) -> tuple:
@@ -525,7 +524,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
 
         elif command == "addroute":
             if SYNC_LOCK.locked():
-                return await safe_reply(event, "⚠️ <b>系统正忙</b>\n后台正在执行其他同步任务，请等待几秒后再试。", 15)
+                return await safe_reply(event, "⚠️ <b>系统正忙</b>\n后台正在执行其他配置同步，请稍等一两秒后再试。", 15)
             
             async with SYNC_LOCK:
                 parts = args.split(maxsplit=1)
@@ -545,10 +544,8 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                 edit_config(do_addroute)
                 write_biz_log("SYS", f"添加自动收纳规则: {folder_name}")
                 
-                await safe_reply(event, f"⏳ <b>正在为您扫描并自动添加群组...</b>\n<i>(系统会遵守 Telegram 接口频率限制缓慢添加，请耐心等待...)</i>", auto_delete=0)
-                
+                # 解耦优化：取消了死等 ROUTE_QUEUE.join()，实现了瞬间秒回！
                 report = await auto_route_groups(client, {folder_name: regex})
-                if not ROUTE_QUEUE.empty(): await ROUTE_QUEUE.join()
                 
                 import sync_engine
                 importlib.reload(sync_engine)
@@ -558,16 +555,18 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                 _save_config(fresh_cfg)
                 state.hot_reload(f_new, c_new, fresh_cfg.get("auto_route_rules", {}))
 
-                msg = f"✅ <b>自动收纳规则已保存</b>\n凡是满足条件的群，都会被存入 <code>{html.escape(folder_name)}</code> 分组。\n\n<b>🔍 马上为您执行了一次全盘扫描：</b>\n"
+                msg = f"✅ <b>自动收纳规则已保存</b>\n凡是满足条件的群，都会被存入 <code>{html.escape(folder_name)}</code> 分组。\n\n<b>🔍 刚刚为您执行了一次全盘扫描：</b>\n"
                 if folder_name in report["created"]:
-                    msg += f"· 💡 <b>为您新建了分组</b>: 系统发现您原来没建这个分组，已经帮您建好了，并找到了 <code>{report['queued'].get(folder_name,0)}</code> 个群成功加了进去。"
+                    msg += f"· 💡 <b>为您新建了分组</b>: 系统发现您原来没建这个分组，已经帮您建好了，并找到了 <code>{report['queued'].get(folder_name,0)}</code> 个群交给了后台。\n"
                 elif folder_name in report["matched_zero"]:
-                    msg += "· 🔕 <b>没有匹配到群</b>: 翻遍了您的账号，没有找到名字里包含这些词的群组。"
+                    msg += "· 🔕 <b>没有匹配到群</b>: 翻遍了您的账号，没有找到名字里包含这些词的群组。\n"
                 else:
                     queued = report["queued"].get(folder_name, 0)
                     already = report["already_in"].get(folder_name, 0)
-                    if queued > 0: msg += f"· ⏳ <b>自动添加完成</b>: 成功找到了 <code>{queued}</code> 个需要加入的群，并已全数为您收纳妥当。\n"
-                    if already > 0: msg += f"· ✅ <b>跳过已有群</b>: 有 <code>{already}</code> 个群本来就在这个分组里，已为您自动跳过。"
+                    if queued > 0: msg += f"· ⏳ <b>排队添加中</b>: 找到了 <code>{queued}</code> 个需要加入的群。为了防封号，系统正在后台排队缓慢添加，请稍后查看。\n"
+                    if already > 0: msg += f"· ✅ <b>跳过已有群</b>: 有 <code>{already}</code> 个群本来就在这个分组里，已为您自动跳过。\n"
+                    
+                msg += f"\n<i>(控制台已解除锁定，您可以继续操作)</i>"
 
                 await safe_reply(event, msg, 25)
 
@@ -585,16 +584,16 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
 
         elif command == "sync":
             if SYNC_LOCK.locked():
-                return await safe_reply(event, "⚠️ <b>系统正忙</b>\n后台正在执行其他同步任务，请等待几秒后再试。", 15)
+                return await safe_reply(event, "⚠️ <b>系统正忙</b>\n后台正在执行其他同步任务，请稍等一两秒后再试。", 15)
             
             async with SYNC_LOCK:
-                await safe_reply(event, f"⏳ <b>正在为您扫描并自动添加群组...</b>\n<i>(系统会遵守 Telegram 接口频率限制缓慢添加，请耐心等待...)</i>", auto_delete=0)
+                await safe_reply(event, f"⏳ <b>系统正在扫描全局差异...</b>", auto_delete=0)
                 import sync_engine
                 importlib.reload(sync_engine)
                 cfg = _load_fresh_config()
                 
+                # 解耦优化：无需死等队列，瞬间返回报告
                 report = await auto_route_groups(client, cfg.get("auto_route_rules", {}))
-                if not ROUTE_QUEUE.empty(): await ROUTE_QUEUE.join()
                     
                 f_new, c_new, has_changes, sync_report = await sync_engine.sync(client, cfg)
                 
@@ -604,29 +603,26 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                 state.hot_reload(f_new, c_new, fresh_cfg.get("auto_route_rules", {}))
                 
                 if has_changes or report["queued"] or report["created"]:
-                    write_biz_log("SYNC", "执行了数据同步，后台任务已启动")
+                    write_biz_log("SYNC", "执行了数据同步，发现变动")
                 else:
                     write_biz_log("SYNC", "数据同步完毕，一切正常")
                     
-                msg = f"✅ <b>TG 最新数据已同步完毕</b>\n\n"
-                msg += f"· 系统刚才顺便帮您检查了 <code>{len(cfg.get('auto_route_rules', {}))}</code> 条自动收纳规则。\n"
+                msg = f"✅ <b>TG 最新数据已核准完毕</b>\n\n"
+                msg += f"· 系统同时检查了 <code>{len(cfg.get('auto_route_rules', {}))}</code> 条自动收纳规则。\n"
                 
                 if report["queued"] or report["created"] or report["matched_zero"] or report["errors"]:
-                    msg += "\n<b>[ 自动收纳任务执行情况 ]</b>\n<blockquote>"
+                    msg += "\n<b>[ 自动收纳任务扫描结果 ]</b>\n<blockquote>"
                     for fn in report["created"]: msg += f"· {html.escape(fn)} : ✨ 为您自动新建了该分组\n"
-                    for fn, cnt in report["queued"].items(): msg += f"· {html.escape(fn)} : ✅ 成功为您添加了 {cnt} 个群\n"
+                    for fn, cnt in report["queued"].items(): msg += f"· {html.escape(fn)} : ⏳ 找到了 {cnt} 个缺失的群，已排队等待添加\n"
                     for fn in report["matched_zero"]: msg += f"· {html.escape(fn)} : 🔕 没找到符合名字的群\n"
                     for fn, err in report["errors"].items(): msg += f"· {html.escape(fn)} : ❌ 接口提示错误\n"
-                    msg += "</blockquote>"
+                    msg += "</blockquote>\n"
+                    msg += f"<i>(控制台已解除锁定，所有添加操作均在后台静默完成)</i>"
                     
                 await safe_reply(event, msg, 25)
 
         elif command == "update":
-            if not ROUTE_QUEUE.empty():
-                await event.edit(f"⏳ <b>等待内部队列安全清空...</b>\n后台还有排队中的收纳任务，系统将在执行完毕后自动开始拉取更新代码，请稍候...")
-                await ROUTE_QUEUE.join()
-
-            reply_msg = await event.edit("🔄 <b>正在获取最新版程序...</b>")
+            reply_msg = await event.edit("🔄 <b>正在获取最新版程序...</b>\n<i>(系统将立即执行热重启，未完队列将在开机后自动重组)</i>")
             write_biz_log("SYS", "开始进行一键更新")
             if reply_msg:
                 with open(os.path.join(WORK_DIR, ".last_msg"), "w") as f:
@@ -634,19 +630,17 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             await asyncio.sleep(1)
             cmd = f"curl -fsSL https://github.com/chenmo8848/TG-Radar/archive/refs/heads/main.zip -o /tmp/tgr.zip && unzip -q -o /tmp/tgr.zip -d /tmp/ && cp -af /tmp/TG-Radar-main/. {WORK_DIR}/ && rm -rf /tmp/tgr.zip /tmp/TG-Radar-main && curl -fsSL https://api.github.com/repos/chenmo8848/TG-Radar/commits/main | python3 -c \"import sys,json; print(json.load(sys.stdin).get('sha',''))\" > {WORK_DIR}/.commit_sha"
             subprocess.run(cmd, shell=True)
+            # 解耦优化：完全不等待，秒杀进程，把烂摊子甩给重启后的自愈引擎！
             subprocess.Popen(["sudo", "systemctl", "restart", SERVICE_NAME])
 
         elif command == "restart":
-            if not ROUTE_QUEUE.empty():
-                await event.edit(f"⏳ <b>等待内部队列安全清空...</b>\n后台还有排队中的收纳任务，系统将在执行完毕后自动执行重启，请稍候...")
-                await ROUTE_QUEUE.join()
-
-            reply_msg = await event.edit("🔄 <b>系统即将重启，请稍候...</b>")
+            reply_msg = await event.edit("🔄 <b>系统即将重启...</b>\n<i>(未完任务将在开机后由引擎自动接管)</i>")
             write_biz_log("SYS", "用户执行了重启系统")
             if reply_msg:
                 with open(os.path.join(WORK_DIR, ".last_msg"), "w") as f:
                     json.dump({"chat_id": "me", "msg_id": reply_msg.id, "action": "restart"}, f)
             await asyncio.sleep(1.5)
+            # 解耦优化：完全不等待，秒杀进程！
             subprocess.Popen(["sudo", "systemctl", "restart", SERVICE_NAME])
 
     @client.on(events.NewMessage)
@@ -699,20 +693,8 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
         except Exception as e:
             logger.error("消息处理发生错误: %s", e)
 
-    loop = asyncio.get_event_loop()
-    async def shutdown_gracefully():
-        logger.info("【SYS】接收到系统终止信号 (SIGTERM/SIGINT)")
-        if not ROUTE_QUEUE.empty():
-            logger.info(f"【SYS】触发保护机制：等待 {ROUTE_QUEUE.qsize()} 个后台队列任务消费完毕...")
-            await ROUTE_QUEUE.join()
-        logger.info("【SYS】队列消费完毕，安全断开 TG 连接。")
-        await client.disconnect()
-
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown_gracefully()))
-
+    # 现在的逻辑是完全解耦的，我们只需要告诉控制台我们在断线，不需要等待长列队了。
     await client.run_until_disconnected()
-
 
 async def main():
     config = load_config()
@@ -736,9 +718,6 @@ async def main():
                         cfg = _load_fresh_config()
                         route_report = await auto_route_groups(client, cfg.get("auto_route_rules", {}))
                         
-                        if not ROUTE_QUEUE.empty():
-                            await ROUTE_QUEUE.join()
-
                         import sync_engine
                         importlib.reload(sync_engine)
                         f_new, c_new, changed, _ = await sync_engine.sync(client, cfg)
@@ -760,7 +739,7 @@ async def main():
         await send_startup_notification(client, notify_channel, state, cmd_prefix)
         write_biz_log("SYS", "程序已成功启动并开始运行")
         
-        pass 
+        await client.run_until_disconnected() 
 
 if __name__ == "__main__":
     try: asyncio.run(main())
