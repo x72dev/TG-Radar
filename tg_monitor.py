@@ -317,6 +317,11 @@ async def auto_route_groups(client, auto_route_rules) -> dict:
                 else:
                     already_cnt += 1
 
+            # 🛠️ 修复了满载截断导致的空任务入队 BUG
+            if len(target_folder.include_peers) + len(to_add) > 100:
+                available = max(0, 100 - len(target_folder.include_peers))
+                to_add = to_add[:available]
+
             if not to_add:
                 report["already_in"][folder_name] = already_cnt
                 continue
@@ -526,7 +531,12 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             edit_config(do_addroute)
             write_biz_log("SYS", f"添加自动收纳规则: {folder_name}")
             
+            # 🛠️ 修复了竞态条件导致的幻觉缓存BUG：等待队列消费完毕再同步！
+            await safe_reply(event, f"⏳ <b>正在为您扫描并自动添加群组...</b>\n<i>(系统会遵守 Telegram 接口频率限制缓慢添加，请耐心等待...)</i>", auto_delete=0)
+            
             report = await auto_route_groups(client, {folder_name: regex})
+            if not ROUTE_QUEUE.empty():
+                await ROUTE_QUEUE.join() # 阻塞安全锁：等后台老老实实加完群！
             
             import sync_engine
             importlib.reload(sync_engine)
@@ -538,16 +548,16 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
 
             msg = f"✅ <b>自动收纳规则已保存</b>\n凡是满足条件的群，都会被存入 <code>{html.escape(folder_name)}</code> 分组。\n\n<b>🔍 马上为您执行了一次全盘扫描：</b>\n"
             if folder_name in report["created"]:
-                msg += f"· 💡 <b>为您新建了分组</b>: 系统发现您原来没建这个分组，已经帮您建好了，并找到了 <code>{report['queued'].get(folder_name,0)}</code> 个群，正在后台慢慢帮您加进去。"
+                msg += f"· 💡 <b>为您新建了分组</b>: 系统发现您原来没建这个分组，已经帮您建好了，并找到了 <code>{report['queued'].get(folder_name,0)}</code> 个群成功加了进去。"
             elif folder_name in report["matched_zero"]:
                 msg += "· 🔕 <b>没有匹配到群</b>: 翻遍了您的账号，没有找到名字里包含这些词的群组。"
             else:
                 queued = report["queued"].get(folder_name, 0)
                 already = report["already_in"].get(folder_name, 0)
-                if queued > 0: msg += f"· ⏳ <b>排队添加中</b>: 找到了 <code>{queued}</code> 个需要加入的群。为了防封号，系统会在后台每隔几秒钟帮您加一个，请稍后去分组里查看。\n"
+                if queued > 0: msg += f"· ⏳ <b>自动添加完成</b>: 成功找到了 <code>{queued}</code> 个需要加入的群，并已全数为您收纳妥当。\n"
                 if already > 0: msg += f"· ✅ <b>跳过已有群</b>: 有 <code>{already}</code> 个群本来就在这个分组里，已为您自动跳过。"
 
-            await apply_hot_reload(event, state, msg, 25)
+            await safe_reply(event, msg, 25)
 
         elif command == "delroute":
             if not args: return await safe_reply(event, f"⚠️ <b>参数缺失</b>: <code>{pe}delroute [分组名]</code>", 15)
@@ -559,12 +569,16 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             await apply_hot_reload(event, state, f"🗑️ <b>收纳规则已删除</b>\n以后将不再自动往 <code>{html.escape(folder_name)}</code> 里加群了。", 15)
 
         elif command == "sync":
-            await safe_reply(event, f"🔄 <b>正在为您同步最新的 TG 数据...</b>", auto_delete=0)
+            await safe_reply(event, f"⏳ <b>正在为您扫描并自动添加群组...</b>\n<i>(系统会遵守 Telegram 接口频率限制缓慢添加，请耐心等待...)</i>", auto_delete=0)
             import sync_engine
             importlib.reload(sync_engine)
             cfg = _load_fresh_config()
             
+            # 🛠️ 同样引入了阻塞安全锁，保证手动触发时数据的绝对可靠
             report = await auto_route_groups(client, cfg.get("auto_route_rules", {}))
+            if not ROUTE_QUEUE.empty():
+                await ROUTE_QUEUE.join()
+                
             f_new, c_new, has_changes, sync_report = await sync_engine.sync(client, cfg)
             
             cfg["folder_rules"], cfg["_system_cache"] = f_new, c_new
@@ -582,7 +596,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             if report["queued"] or report["created"] or report["matched_zero"] or report["errors"]:
                 msg += "\n<b>[ 自动收纳任务执行情况 ]</b>\n<blockquote>"
                 for fn in report["created"]: msg += f"· {html.escape(fn)} : ✨ 为您自动新建了该分组\n"
-                for fn, cnt in report["queued"].items(): msg += f"· {html.escape(fn)} : ⏳ 找到了 {cnt} 个群，后台正在排队添加\n"
+                for fn, cnt in report["queued"].items(): msg += f"· {html.escape(fn)} : ✅ 成功为您添加了 {cnt} 个群\n"
                 for fn in report["matched_zero"]: msg += f"· {html.escape(fn)} : 🔕 没找到符合名字的群\n"
                 for fn, err in report["errors"].items(): msg += f"· {html.escape(fn)} : ❌ 接口提示错误\n"
                 msg += "</blockquote>"
@@ -615,8 +629,13 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             if not (event.is_group or event.is_channel) or event.chat_id not in state.target_map: return
             msg_text = event.raw_text
             if not msg_text: return
+            
+            # 🛠️ 修复了多重匹配重复报警的 BUG
             chat, chat_title, sender_name, sender_loaded = None, "", "", False
+            already_alerted = False
+            
             for task in state.target_map[event.chat_id]:
+                if already_alerted: break
                 for level, pattern in task["rules"].items():
                     match = pattern.search(msg_text)
                     if not match: continue
@@ -649,6 +668,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                         state.last_hit_folder = task["folder_name"]
                         state.last_hit_time = datetime.now()
                         write_biz_log("HIT", f"拦截到了: {match.group(0)} | 来源群组: {chat_title}")
+                        already_alerted = True
                     except: pass
                     break
         except Exception as e:
