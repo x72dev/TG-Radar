@@ -646,6 +646,8 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             if not msg_text: return
             
             chat, chat_title, sender_name, sender_loaded = None, "", "", False
+            
+            # 🔥 防止同一条消息发 3 遍的强力熔断机制 🔥
             already_alerted = False
             
             for task in state.target_map[event.chat_id]:
@@ -682,6 +684,8 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                         state.last_hit_folder = task["folder_name"]
                         state.last_hit_time = datetime.now()
                         write_biz_log("HIT", f"拦截到了: {match.group(0)} | 来源群组: {chat_title}")
+                        
+                        # 标记已发报警，强行阻断其它匹配
                         already_alerted = True
                     except: pass
                     break
