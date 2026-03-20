@@ -657,6 +657,8 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             if not msg_text: return
             
             chat, chat_title, sender_name, sender_loaded = None, "", "", False
+            
+            # 🔥 防止同一条消息发 3 遍的强力熔断机制 🔥
             already_alerted = False
             
             for task in state.target_map[event.chat_id]:
@@ -677,22 +679,27 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                     preview = html.escape(msg_text[:1000])
                     msg_link = build_msg_link(chat, event.chat_id, event.id)
                     
-                    alert_text = f"""🚨 <b>监控词触发提醒</b>
+                    # 🎨 全新优化的电子工单级报警通知排版
+                    now_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    alert_text = f"""🚨 <b>监控情报触发通知</b>
 
-· <b>触发词汇</b>：<code>{html.escape(match.group(0))}</code>
-· <b>所属规则</b>：<code>{html.escape(level)}</code> ({html.escape(task['folder_name'])})
-· <b>来自哪里</b>：<code>{html.escape(chat_title)}</code>
-· <b>发送人员</b>：@{html.escape(sender_name)}
+⏰ <b>捕获时间</b>：<code>{now_time}</code>
+🎯 <b>命中词汇</b>：<code>{html.escape(match.group(0))}</code>
+📁 <b>命中规则</b>：<code>{html.escape(level)}</code> ({html.escape(task['folder_name'])})
+📡 <b>消息来源</b>：<code>{html.escape(chat_title)}</code>
+👤 <b>发送人员</b>：@{html.escape(sender_name)}
 
-<b>[ 详细文本内容 ]</b>
+<b>💬 原始消息快照</b>：
 <blockquote expandable>{preview}</blockquote>"""
-                    if msg_link: alert_text += f'\n🔗 <a href="{msg_link}">点击跳转查看原消息</a>'
+                    if msg_link: alert_text += f'\n🔗 <a href="{msg_link}">点击跳转直达案发现场</a>'
                     try:
                         await client.send_message(task["alert_channel"], alert_text, link_preview=False)
                         state.total_hits += 1
                         state.last_hit_folder = task["folder_name"]
                         state.last_hit_time = datetime.now()
                         write_biz_log("HIT", f"拦截到了: {match.group(0)} | 来源群组: {chat_title}")
+                        
+                        # 标记已发报警，强行阻断其它匹配
                         already_alerted = True
                     except: pass
                     break
