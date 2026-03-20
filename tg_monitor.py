@@ -14,7 +14,6 @@ SESSION_NAME = os.path.join(WORK_DIR, "TG_Radar_session")
 SERVICE_NAME = "tg_monitor"
 MONITOR_LOG_PATH = os.path.join(WORK_DIR, "monitor.log")
 
-# 💎 引入核心双锁结构：防止内存丢失与脏写覆盖
 ROUTE_QUEUE = asyncio.Queue()
 SYNC_LOCK = asyncio.Lock()  
 
@@ -112,6 +111,7 @@ def _save_config(cfg: dict) -> None:
     }
     tmp = CONFIG_PATH + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f: json.dump(desc_cfg, f, indent=4, ensure_ascii=False)
+    # 原子操作覆盖写入，防止死机导致配置损坏
     os.replace(tmp, CONFIG_PATH)
 
 def validate_config(config: dict) -> tuple:
@@ -207,7 +207,6 @@ async def send_startup_notification(client, notify_channel, state, cmd_prefix):
     if msg_obj: asyncio.create_task(schedule_delete(msg_obj, 60))
 
 def edit_config(modifier_fn) -> tuple:
-    # 💎 JIT 写入保护：获取最新配置后瞬间覆写，杜绝所有脏读脏写
     try:
         cfg = _load_fresh_config()
         modifier_fn(cfg)
@@ -463,52 +462,61 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             await safe_reply(event, f"🛡️ <b>【{html.escape(matched)}】内的监控规则</b>\n<blockquote>{rules_block}</blockquote>", auto_delete=45)
 
         elif command in ["enable", "disable"]:
-            if not args: return await safe_reply(event, f"⚠️ <b>请指定分组名称</b>\n示例: <code>{pe}{command} 业务群</code>", 15)
-            matched, _ = find_folder(state.folder_rules, args)
-            if not matched: return await safe_reply(event, "⚠️ 系统找不到您输入的这个分组名。", 15)
-            tgt = (command == "enable")
-            def do_toggle(cfg): cfg["folder_rules"][matched]["enable"] = tgt
-            edit_config(do_toggle)
-            write_biz_log("SYS", f"更改监控开关：{matched} -> {tgt}")
-            status_txt = "🟢 已开启监控" if tgt else "⚪ 已关闭监控 (挂起)"
-            await apply_hot_reload(event, state, f"⚙️ <b>设置已更新</b>\n分组 <code>{html.escape(matched)}</code> {status_txt}", 15)
+            if SYNC_LOCK.locked():
+                return await safe_reply(event, "⚠️ <b>系统正忙</b>\n后台正在执行配置同步，请稍后再试。", 15)
+            async with SYNC_LOCK:
+                if not args: return await safe_reply(event, f"⚠️ <b>请指定分组名称</b>\n示例: <code>{pe}{command} 业务群</code>", 15)
+                matched, _ = find_folder(state.folder_rules, args)
+                if not matched: return await safe_reply(event, "⚠️ 系统找不到您输入的这个分组名。", 15)
+                tgt = (command == "enable")
+                def do_toggle(cfg): cfg["folder_rules"][matched]["enable"] = tgt
+                edit_config(do_toggle)
+                write_biz_log("SYS", f"更改监控开关：{matched} -> {tgt}")
+                status_txt = "🟢 已开启监控" if tgt else "⚪ 已关闭监控 (挂起)"
+                await apply_hot_reload(event, state, f"⚙️ <b>设置已更新</b>\n分组 <code>{html.escape(matched)}</code> {status_txt}", 15)
 
         elif command == "addrule":
-            parts = args.split(maxsplit=2)
-            if len(parts) < 3: return await safe_reply(event, f"⚠️ <b>缺少内容</b>\n请按照格式发送: <code>{pe}addrule [分组名] [规则名] [要监控的词]</code>", 15)
-            matched, _ = find_folder(state.folder_rules, parts[0].strip())
-            if not matched: return await safe_reply(event, "⚠️ 找不到您输入的这个分组。", 15)
-            rule_name = parts[1].strip()
-            new_words = [re.escape(w.strip()) for w in parts[2].split() if w.strip()]
-            existing = state.folder_rules[matched].get("rules", {})
-            current_words = set(t.strip() for t in existing.get(rule_name, "").strip("()").split("|") if t.strip())
-            current_words.update(new_words)
-            merged_pattern = "(" + "|".join(sorted(current_words)) + ")"
-            def do_add(cfg): cfg["folder_rules"][matched].setdefault("rules", {})[rule_name] = merged_pattern
-            edit_config(do_add)
-            write_biz_log("SYS", f"添加监控词：{rule_name} -> {matched}")
-            await apply_hot_reload(event, state, f"✅ <b>监控词添加成功</b>\n· 目标分组: <code>{html.escape(matched)}</code>\n· 规则名称: <code>{html.escape(rule_name)}</code>", 15)
+            if SYNC_LOCK.locked():
+                return await safe_reply(event, "⚠️ <b>系统正忙</b>\n后台正在执行配置同步，请稍后再试。", 15)
+            async with SYNC_LOCK:
+                parts = args.split(maxsplit=2)
+                if len(parts) < 3: return await safe_reply(event, f"⚠️ <b>缺少内容</b>\n请按照格式发送: <code>{pe}addrule [分组名] [规则名] [要监控的词]</code>", 15)
+                matched, _ = find_folder(state.folder_rules, parts[0].strip())
+                if not matched: return await safe_reply(event, "⚠️ 找不到您输入的这个分组。", 15)
+                rule_name = parts[1].strip()
+                new_words = [re.escape(w.strip()) for w in parts[2].split() if w.strip()]
+                existing = state.folder_rules[matched].get("rules", {})
+                current_words = set(t.strip() for t in existing.get(rule_name, "").strip("()").split("|") if t.strip())
+                current_words.update(new_words)
+                merged_pattern = "(" + "|".join(sorted(current_words)) + ")"
+                def do_add(cfg): cfg["folder_rules"][matched].setdefault("rules", {})[rule_name] = merged_pattern
+                edit_config(do_add)
+                write_biz_log("SYS", f"添加监控词：{rule_name} -> {matched}")
+                await apply_hot_reload(event, state, f"✅ <b>监控词添加成功</b>\n· 目标分组: <code>{html.escape(matched)}</code>\n· 规则名称: <code>{html.escape(rule_name)}</code>", 15)
 
         elif command == "delrule":
-            parts = args.split()
-            if len(parts) < 2: return await safe_reply(event, f"⚠️ <b>缺少内容</b>\n请按照格式发送: <code>{pe}delrule [分组名] [规则名] [要删的词]</code>", 15)
-            matched, _ = find_folder(state.folder_rules, parts[0].strip())
-            if not matched: return await safe_reply(event, "⚠️ 找不到您输入的这个分组。", 15)
-            rule_name, remove_words = parts[1].strip(), set(re.escape(w.strip()) for w in parts[2:] if w.strip())
-            existing = state.folder_rules[matched].get("rules", {})
-            if rule_name not in existing: return await safe_reply(event, "⚠️ 这个分组里没有叫这个名字的规则。", 15)
-            current_words = set(t.strip() for t in existing[rule_name].strip("()").split("|") if t.strip())
-            remain_words = current_words - remove_words
-            if not remove_words or not remain_words:
-                def do_delall(cfg): del cfg["folder_rules"][matched]["rules"][rule_name]
-                edit_config(do_delall)
-                write_biz_log("SYS", f"删除了整个规则：{rule_name}")
-                return await apply_hot_reload(event, state, f"🗑️ <b>已彻底删除整条规则</b>\n· 目标分组: <code>{html.escape(matched)}</code>\n· 规则名称: <code>{html.escape(rule_name)}</code>", 15)
-            new_pattern = "(" + "|".join(sorted(remain_words)) + ")"
-            def do_update(cfg): cfg["folder_rules"][matched]["rules"][rule_name] = new_pattern
-            edit_config(do_update)
-            write_biz_log("SYS", f"移除了部分监控词：{rule_name}")
-            await apply_hot_reload(event, state, f"✂️ <b>指定的监控词已删除</b>\n· 目标分组: <code>{html.escape(matched)}</code>\n· 规则名称: <code>{html.escape(rule_name)}</code>", 15)
+            if SYNC_LOCK.locked():
+                return await safe_reply(event, "⚠️ <b>系统正忙</b>\n后台正在执行配置同步，请稍后再试。", 15)
+            async with SYNC_LOCK:
+                parts = args.split()
+                if len(parts) < 2: return await safe_reply(event, f"⚠️ <b>缺少内容</b>\n请按照格式发送: <code>{pe}delrule [分组名] [规则名] [要删的词]</code>", 15)
+                matched, _ = find_folder(state.folder_rules, parts[0].strip())
+                if not matched: return await safe_reply(event, "⚠️ 找不到您输入的这个分组。", 15)
+                rule_name, remove_words = parts[1].strip(), set(re.escape(w.strip()) for w in parts[2:] if w.strip())
+                existing = state.folder_rules[matched].get("rules", {})
+                if rule_name not in existing: return await safe_reply(event, "⚠️ 这个分组里没有叫这个名字的规则。", 15)
+                current_words = set(t.strip() for t in existing[rule_name].strip("()").split("|") if t.strip())
+                remain_words = current_words - remove_words
+                if not remove_words or not remain_words:
+                    def do_delall(cfg): del cfg["folder_rules"][matched]["rules"][rule_name]
+                    edit_config(do_delall)
+                    write_biz_log("SYS", f"删除了整个规则：{rule_name}")
+                    return await apply_hot_reload(event, state, f"🗑️ <b>已彻底删除整条规则</b>\n· 目标分组: <code>{html.escape(matched)}</code>\n· 规则名称: <code>{html.escape(rule_name)}</code>", 15)
+                new_pattern = "(" + "|".join(sorted(remain_words)) + ")"
+                def do_update(cfg): cfg["folder_rules"][matched]["rules"][rule_name] = new_pattern
+                edit_config(do_update)
+                write_biz_log("SYS", f"移除了部分监控词：{rule_name}")
+                await apply_hot_reload(event, state, f"✂️ <b>指定的监控词已删除</b>\n· 目标分组: <code>{html.escape(matched)}</code>\n· 规则名称: <code>{html.escape(rule_name)}</code>", 15)
 
         elif command == "routes":
             lines = [f"· 自动归入：<code>{html.escape(f)}</code>\n  群名包含：<code>{html.escape(p)}</code>" for f, p in state.auto_route_rules.items()]
@@ -516,7 +524,6 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             await safe_reply(event, f"🔀 <b>自动路由 (群组收纳) 列表</b>\n<blockquote>{block}</blockquote>", auto_delete=45)
 
         elif command == "addroute":
-            # 💎 互斥锁保护，防止用户连点导致 API 洪水
             if SYNC_LOCK.locked():
                 return await safe_reply(event, "⚠️ <b>系统正忙</b>\n后台正在执行其他同步任务，请等待几秒后再试。", 15)
             
@@ -545,7 +552,6 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                 
                 import sync_engine
                 importlib.reload(sync_engine)
-                # 💎 JIT 重新加载，防止异步空窗期配置被覆盖
                 fresh_cfg = _load_fresh_config()
                 f_new, c_new, _, _ = await sync_engine.sync(client, fresh_cfg)
                 fresh_cfg["folder_rules"], fresh_cfg["_system_cache"] = f_new, c_new
@@ -566,13 +572,16 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                 await safe_reply(event, msg, 25)
 
         elif command == "delroute":
-            if not args: return await safe_reply(event, f"⚠️ <b>参数缺失</b>: <code>{pe}delroute [分组名]</code>", 15)
-            folder_name = args.strip()
-            if folder_name not in state.auto_route_rules: return await safe_reply(event, "⚠️ 没有找到这条自动收纳规则。", 15)
-            def do_delroute(cfg): del cfg["auto_route_rules"][folder_name]
-            edit_config(do_delroute)
-            write_biz_log("SYS", f"删除了收纳规则: {folder_name}")
-            await apply_hot_reload(event, state, f"🗑️ <b>收纳规则已删除</b>\n以后将不再自动往 <code>{html.escape(folder_name)}</code> 里加群了。", 15)
+            if SYNC_LOCK.locked():
+                return await safe_reply(event, "⚠️ <b>系统正忙</b>\n后台正在执行配置同步，请稍后再试。", 15)
+            async with SYNC_LOCK:
+                if not args: return await safe_reply(event, f"⚠️ <b>参数缺失</b>: <code>{pe}delroute [分组名]</code>", 15)
+                folder_name = args.strip()
+                if folder_name not in state.auto_route_rules: return await safe_reply(event, "⚠️ 没有找到这条自动收纳规则。", 15)
+                def do_delroute(cfg): del cfg["auto_route_rules"][folder_name]
+                edit_config(do_delroute)
+                write_biz_log("SYS", f"删除了收纳规则: {folder_name}")
+                await apply_hot_reload(event, state, f"🗑️ <b>收纳规则已删除</b>\n以后将不再自动往 <code>{html.escape(folder_name)}</code> 里加群了。", 15)
 
         elif command == "sync":
             if SYNC_LOCK.locked():
@@ -690,7 +699,6 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
         except Exception as e:
             logger.error("消息处理发生错误: %s", e)
 
-    # 💎 终极保护：注册底层的优雅停机钩子，拦截来自系统的 SIGTERM 物理斩杀
     loop = asyncio.get_event_loop()
     async def shutdown_gracefully():
         logger.info("【SYS】接收到系统终止信号 (SIGTERM/SIGINT)")
@@ -724,7 +732,6 @@ async def main():
             await asyncio.sleep(5)
             while True:
                 try:
-                    # 💎 使用互斥锁防止 Cron 定时轮询和管理员手动指令产生冲突
                     async with SYNC_LOCK:
                         cfg = _load_fresh_config()
                         route_report = await auto_route_groups(client, cfg.get("auto_route_rules", {}))
@@ -753,7 +760,6 @@ async def main():
         await send_startup_notification(client, notify_channel, state, cmd_prefix)
         write_biz_log("SYS", "程序已成功启动并开始运行")
         
-        # 将运行控制权交给上方的事件与钩子
         pass 
 
 if __name__ == "__main__":
