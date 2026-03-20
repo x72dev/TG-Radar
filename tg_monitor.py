@@ -543,8 +543,6 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                 edit_config(do_addroute)
                 write_biz_log("SYS", f"添加自动收纳规则: {folder_name}")
                 
-                await safe_reply(event, f"⏳ <b>正在为您扫描并自动添加群组...</b>\n<i>(系统会遵守 Telegram 接口频率限制缓慢添加，请耐心等待...)</i>", auto_delete=0)
-                
                 report = await auto_route_groups(client, {folder_name: regex})
                 
                 import sync_engine
@@ -735,7 +733,7 @@ async def main():
         await send_startup_notification(client, notify_channel, state, cmd_prefix)
         write_biz_log("SYS", "程序已成功启动并开始运行")
         
-        await client.run_until_disconnected()
+        await client.run_until_disconnected() 
 
 if __name__ == "__main__":
     try: asyncio.run(main())
