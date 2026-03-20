@@ -688,8 +688,6 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
         except Exception as e:
             logger.error("消息处理发生错误: %s", e)
 
-    await client.run_until_disconnected()
-
 async def main():
     config = load_config()
     api_id, api_hash, global_alert, notify_channel, cmd_prefix, auto_route = validate_config(config)
