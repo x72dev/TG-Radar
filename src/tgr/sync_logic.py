@@ -29,7 +29,7 @@ class RouteReport:
     errors: dict[str, str]
 
 
-DEFAULT_DEMO_PATTERN = "(示范词A|示范词B)"
+DEFAULT_DEMO_PATTERN = "(关键词A|关键词B)"
 
 
 async def sync_dialog_folders(client: TelegramClient, db: RadarDB) -> SyncReport:

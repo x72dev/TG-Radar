@@ -1,0 +1,134 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "TG-Radar Configuration Schema",
+    "type": "object",
+    "description_zh": "TG-Radar 运行配置说明。运行时请使用纯净的 config.json，本文件仅提供字段说明。",
+    "fields": {
+        "api_id": {
+            "type": "integer",
+            "default": 1234567,
+            "description_zh": "Telegram API ID。前往 my.telegram.org 创建应用后获取。",
+            "example": 1234567
+        },
+        "api_hash": {
+            "type": "string",
+            "default": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            "description_zh": "Telegram API Hash。与 API ID 配套使用。",
+            "example": "0123456789abcdef0123456789abcdef"
+        },
+        "global_alert_channel_id": {
+            "type": ["integer", "null"],
+            "default": null,
+            "description_zh": "默认关键词告警目标频道 ID。为空时必须在分组级别单独配置。",
+            "example": -1001234567890
+        },
+        "notify_channel_id": {
+            "type": ["integer", "null"],
+            "default": null,
+            "description_zh": "系统通知目标频道 ID。为空时发送到 Saved Messages。",
+            "example": -1001234567890
+        },
+        "cmd_prefix": {
+            "type": "string",
+            "default": "-",
+            "description_zh": "Telegram 控制命令前缀，建议 1 到 3 个字符。",
+            "example": "-"
+        },
+        "service_name_prefix": {
+            "type": "string",
+            "default": "tg-radar",
+            "description_zh": "systemd 服务名前缀。",
+            "example": "tg-radar"
+        },
+        "sync_interval_seconds": {
+            "type": "integer",
+            "default": 1800,
+            "description_zh": "自动同步轮询间隔，单位秒。",
+            "example": 1800
+        },
+        "route_worker_interval_seconds": {
+            "type": "integer",
+            "default": 4,
+            "description_zh": "自动收纳任务之间的节流间隔，单位秒。",
+            "example": 4
+        },
+        "revision_poll_seconds": {
+            "type": "integer",
+            "default": 3,
+            "description_zh": "Core 轮询 revision 的间隔，单位秒。",
+            "example": 3
+        },
+        "panel_auto_delete_seconds": {
+            "type": "integer",
+            "default": 45,
+            "description_zh": "临时面板自动回收时间，单位秒。关键词告警不受此项影响。",
+            "example": 45
+        },
+        "notify_auto_delete_seconds": {
+            "type": "integer",
+            "default": 0,
+            "description_zh": "系统通知自动回收时间，0 表示保留。",
+            "example": 0
+        },
+        "recycle_fallback_command_seconds": {
+            "type": "integer",
+            "default": 8,
+            "description_zh": "当无法编辑原命令消息、改为回复时，原命令消息的回收时间。",
+            "example": 8
+        },
+        "repo_url": {
+            "type": "string",
+            "default": "https://github.com/chenmo8848/TG-Radar.git",
+            "description_zh": "仓库地址，用于 update 流程与部署信息展示。",
+            "example": "https://github.com/chenmo8848/TG-Radar.git"
+        },
+        "scheduler_poll_seconds": {
+            "type": "integer",
+            "default": 1,
+            "description_zh": "Admin 调度层检查任务队列的间隔，单位秒。",
+            "example": 1
+        },
+        "snapshot_flush_debounce_seconds": {
+            "type": "integer",
+            "default": 3,
+            "description_zh": "配置快照回写的防抖时间，单位秒。",
+            "example": 3
+        },
+        "max_parallel_admin_jobs": {
+            "type": "integer",
+            "default": 2,
+            "description_zh": "Admin 同时执行后台任务的最大并发数。",
+            "example": 2
+        },
+        "route_scan_interval_seconds": {
+            "type": "integer",
+            "default": 120,
+            "description_zh": "自动收纳扫描间隔，单位秒。",
+            "example": 120
+        },
+        "sync_auto_jitter_seconds": {
+            "type": "integer",
+            "default": 8,
+            "description_zh": "自动同步首次启动时的随机抖动秒数，用于降低启动尖峰。",
+            "example": 8
+        },
+        "auto_route_rules": {
+            "type": "object",
+            "default": {},
+            "description_zh": "旧版兼容字段，由系统自动回写。建议通过 Telegram 命令维护。",
+            "example": {}
+        },
+        "folder_rules": {
+            "type": "object",
+            "default": {},
+            "description_zh": "旧版兼容字段，由系统自动回写。建议通过 Telegram 命令维护。",
+            "example": {}
+        },
+        "_system_cache": {
+            "type": "object",
+            "default": {},
+            "description_zh": "旧版兼容缓存字段，由系统自动回写。",
+            "example": {}
+        }
+    }
+}

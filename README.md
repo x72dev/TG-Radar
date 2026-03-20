@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="https://readme-typing-svg.herokuapp.com?font=Inter&weight=600&size=20&duration=2800&pause=700&color=111827&center=true&vCenter=true&width=980&lines=Plan+C+%C2%B7+Admin%2FCore+%E5%8F%8C%E6%9C%8D%E5%8A%A1+%C2%B7+SQLite+WAL;%E8%87%AA%E5%8A%A8%E5%90%8C%E6%AD%A5+%C2%B7+%E7%83%AD%E6%9B%B4%E6%96%B0+%C2%B7+Saved+Messages+ChatOps;%E7%BC%96%E8%BE%91%E5%8E%9F%E6%B6%88%E6%81%AF+%C2%B7+%E8%87%AA%E5%8A%A8%E5%9B%9E%E6%94%B6+%C2%B7+%E8%81%9A%E5%90%88%E5%91%8A%E8%AD%A6;%E4%B8%80%E6%9D%A1%E5%91%BD%E4%BB%A4%E9%83%A8%E7%BD%B2%E5%88%B0+%2Froot%2FTG-Radar" alt="typing" />
+<img src="https://readme-typing-svg.herokuapp.com?font=Inter&weight=600&size=20&duration=2800&pause=700&color=111827&center=true&vCenter=true&width=980&lines=Plan+C+%C2%B7+Admin%2FCore+%E5%8F%8C%E6%9C%8D%E5%8A%A1+%C2%B7+SQLite+WAL;%E8%87%AA%E5%8A%A8%E5%90%8C%E6%AD%A5+%C2%B7+%E7%83%AD%E6%9B%B4%E6%96%B0+%C2%B7+Saved+Messages+ChatOps;%E5%85%B3%E9%94%AE%E4%BA%8B%E4%BB%B6%E6%97%A5%E5%BF%97+%C2%B7+%E8%81%9A%E5%90%88%E5%91%8A%E8%AD%A6+%C2%B7+%E7%9F%AD%E8%A1%8C%E5%8D%A1%E7%89%87;%E4%B8%80%E6%9D%A1%E5%91%BD%E4%BB%A4%E9%83%A8%E7%BD%B2%E5%88%B0+%2Froot%2FTG-Radar" alt="typing" />
 
 <p>
   <img src="https://img.shields.io/badge/Architecture-Admin%20%2B%20Core-111827?style=for-the-badge" alt="Architecture" />
@@ -23,7 +23,7 @@
 - **关键词实时监听与热更新**
 - **Saved Messages 控制台式交互**
 
-这一版继续保留原项目的实战逻辑，同时将底层整理为更稳定的 **Plan C**：
+这一版保留原项目的实战逻辑，并将底层整理为更稳定的 **Plan C**：
 
 - **Admin Service**：负责收藏夹交互、自动同步、自动收纳、更新与重启
 - **Core Service**：负责实时监听、规则匹配、告警发送
@@ -38,9 +38,9 @@
 | 自动同步 | 支持定时同步、手动同步、revision 热更新 |
 | Telegram 交互 | 在 `Saved Messages` 中完整管理分组、规则、路由、同步、更新、重启 |
 | 告警体验 | 同一目标聚合告警、重复命中计数、原消息直达链接 |
-| 消息回收 | 优先编辑原命令消息，帮助面板与状态面板自动回收 |
+| 关键事件日志 | `-log` 默认只展示关键事件，去噪、中文化、卡片化 |
 | 自动收纳 | 基于标题规则自动识别新群并补入目标 TG 分组 |
-| 长期运行 | systemd 双服务、SQLite WAL、Rotating 日志、持久化队列 |
+| 长期运行 | systemd 双服务、SQLite WAL、持久化队列 |
 
 ---
 
@@ -90,47 +90,29 @@ TR uninstall
 -help
 -status
 -folders
--rules 业务群
--enable 业务群
--addrule 业务群 核心词 苹果 华为
--addrule 业务群 高危词 催收 逾期 下款 台([1-9]|一|二|三|四|五|六|七|八|九|十)
--addroute 业务群 供需 担保
--addroute 业务群 "精品 群" 台([1-9]|一|二|三)
+-rules 示例分组
+-enable 示例分组
+-addrule 示例分组 规则A 监控词A 监控词B
+-delrule 示例分组 规则A
+-delrule 示例分组 规则A 监控词A
+-addroute 示例分组 标题词A 标题词B
 -sync
 -update
 -restart
 ```
 
-
-
 ### 规则写法
 
-- 普通关键词可直接用空格分隔，系统会自动归一化为 OR 表达式。
-- 正则片段会原样保留，可以和普通关键词混合输入。
-- 含空格的分组名、规则名或短语关键词请使用引号。
-
-```text
--addrule 业务群 核心词 苹果 华为
--addrule 业务群 高危词 催收 逾期 下款 台([1-9]|一|二|三|四|五|六|七|八|九|十)
--addrule "业务 群" "短语规则" "数据商监控" 催收
--addroute 业务群 "精品 群" 台([1-9]|一|二|三)
-```
-
-归一化后的效果示例：
-
-```text
-苹果 华为
-=> (苹果|华为)
-
-催收 逾期 下款 台([1-9]|一|二|三)
-=> (催收|逾期|下款|台([1-9]|一|二|三))
-```
+- 多个普通词会自动合并为 **OR 规则**
+- 单个正则表达式会按原样使用
+- 普通词和正则片段可以混合输入
+- 分组名、规则名、短语关键词如包含空格，请用引号包起来
 
 ### 交互特性
 
 - **优先编辑原命令消息**，减少控制台刷屏
-- 帮助面板、状态面板、同步结果支持**自动回收**
-- fallback 回复也会自动清理原始命令消息
+- 帮助面板、状态面板、同步结果属于**临时面板**，可按配置自动回收
+- **关键词告警与系统通知默认保留**，不会自动回收
 - 分组启停、规则变更、缓存变动会通过 **revision watcher** 即时生效
 
 ---
@@ -165,29 +147,16 @@ TG-Radar/
 
 ---
 
-## 本次收尾重点
+## 日志说明
 
-### 终端与安装体验
+- Telegram 里的 `-log` 默认展示**关键事件**
+- `-log all 20` 可查看更完整的事件流
+- 终端完整日志请使用：
 
-- 安装向导文案与交互重新整理
-- `TR` 终端控制界面统一风格
-- 卸载、清理、重授权、自检输出统一口径
-
-### Telegram 交互体验
-
-- `help / status / config / sync / update / restart` 全部重排
-- 告警通知改为更适合聊天气泡宽度的短行卡片结构
-- 同一目标聚合告警，并显示重复命中次数
-- 保留并强化了：
-  - **编辑现有消息**
-  - **垃圾消息自动回收**
-
-### 配置与目录
-
-- `config.example.json` 改成带中文说明的模板
-- 项目名称统一为 **TG-Radar**
-- 全局命令统一为 **TR**
-- 默认部署路径统一为 **`/root/TG-Radar`**
+```bash
+TR logs admin
+TR logs core
+```
 
 ---
 
@@ -218,3 +187,16 @@ TR cleanup-legacy
 - 首次 Telegram 登录仍然需要输入 **手机号 / 验证码 / 二步密码（如已开启）**
 - `runtime/` 中的日志、session、数据库文件都属于运行时数据，不建议提交到 GitHub
 - 上传仓库时请保留 `runtime/README.md`，不要提交真实 session 与数据库
+
+
+## Admin 三层调度架构
+
+- **命令层**：接收 Telegram 命令并快速回执。
+- **调度层**：统一排队 sync / route / update / restart / snapshot flush。
+- **执行层**：后台执行重任务，避免阻塞命令响应。
+
+## 配置说明
+
+- 运行时使用纯净的 `config.json`。
+- 字段中文说明、类型、默认值、示例位于 `config.schema.json`。
+- 旧版写入的中文说明字段会在下次保存时自动清理。

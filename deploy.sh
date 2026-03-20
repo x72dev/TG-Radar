@@ -222,7 +222,7 @@ print(f"服务前缀     : {cfg.get('service_name_prefix')}")
 print(f"同步轮询     : {cfg.get('sync_interval_seconds')} 秒")
 print(f"热更新轮询   : {cfg.get('revision_poll_seconds')} 秒")
 print(f"面板自动回收 : {cfg.get('panel_auto_delete_seconds')} 秒")
-print(f"通知自动回收 : {cfg.get('notify_auto_delete_seconds')} 秒")
+print("系统通知保留 : 默认保留，不自动回收" if int(cfg.get('notify_auto_delete_seconds') or 0) == 0 else f"系统通知保留 : {cfg.get('notify_auto_delete_seconds')} 秒后回收")
 print(f"仓库地址     : {cfg.get('repo_url')}")
 PY
 }
