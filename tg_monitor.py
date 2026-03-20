@@ -1,4 +1,4 @@
-import os, re, sys, json, asyncio, logging, subprocess, html, importlib
+import os, re, sys, json, asyncio, logging, subprocess, html, importlib, signal
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -151,18 +151,17 @@ def build_msg_link(chat, chat_id: int, msg_id: int) -> str:
 
 async def send_startup_notification(client, notify_channel, state, cmd_prefix):
     lines = []
-    enabled_cnt = 0
+    enabled_cnt = sum(1 for cfg in state.folder_rules.values() if cfg.get("enable", False))
     for name, cfg in state.folder_rules.items():
         if cfg.get("enable", False):
             grp_cnt = len(state.system_cache.get(name, []))
             rule_cnt = len(cfg.get("rules", {}))
-            lines.append(f"✅ {html.escape(name)} (监控了 {grp_cnt} 个群, 包含 {rule_cnt} 条规则)")
-            enabled_cnt += 1
+            lines.append(f"🟢 <b>{html.escape(name)}</b> (监听了 {grp_cnt} 个群, 包含 {rule_cnt} 条规则)")
     folder_block = "\n".join(lines) if lines else "<i>(当前没有开启任何分组的监控)</i>"
     
     route_lines = []
     for f_name, pat in state.auto_route_rules.items():
-        route_lines.append(f"🔀 将名含 <code>{html.escape(pat)}</code> 的群自动拉入 <code>{html.escape(f_name)}</code>")
+        route_lines.append(f"🔀 将名含 <code>{html.escape(pat)}</code> 的群拉入 <code>{html.escape(f_name)}</code>")
     route_block = "\n".join(route_lines) if route_lines else "<i>(当前没有设置自动路由)</i>"
     
     msg = f"""📊 <b>TG-Radar 监控系统已上线</b>
@@ -173,9 +172,9 @@ async def send_startup_notification(client, notify_channel, state, cmd_prefix):
 · 内存占用：<code>{get_mem_usage()}</code>
 
 <b>🌐 监控规模</b>
-· 活跃的分组：<code>{enabled_cnt}</code> 个 (总计 {len(state.folder_rules)} 个)
-· 正在监听中：<code>{len(state.target_map)}</code> 个群组/频道
-· 已加载规则：<code>{state.valid_rules_count}</code> 条监控词策略
+· 活跃分组：<code>{enabled_cnt}</code> 个 (系统共记录 {len(state.folder_rules)} 个)
+· 正在监听：<code>{len(state.target_map)}</code> 个活跃群组/频道
+· 生效规则：<code>{state.valid_rules_count}</code> 条监控策略
 
 <b>[ 正在监控的分组 ]</b>
 <blockquote>{folder_block}</blockquote>
@@ -382,7 +381,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
 <code>{pe}delroute [分组名]</code> - 删除自动收纳规则
 
 <b>🔧 系统维护指令</b>
-<code>{pe}sync</code>    - 如果你在 TG 手动修改了分组，发这个指令让系统立刻读取最新分组
+<code>{pe}sync</code>    - 强制执行一次全盘数据比对与同步
 <code>{pe}update</code>  - 一键更新到最新版代码
 <code>{pe}restart</code> - 重启系统进程
 
@@ -413,7 +412,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
 · 正在监听的群：<code>{len(state.target_map)}</code> 个活跃群组/频道
 · 已加载的规则：<code>{state.valid_rules_count}</code> 条监控策略
 
-<b>🔀 智能路由调度 (K8s 声明式对齐引擎)</b>
+<b>🔀 智能路由调度 (声明式对齐引擎)</b>
 · 自动收纳规则：已配置 <code>{len(state.auto_route_rules)}</code> 条收纳条件{q_info}
 
 <b>🛡️ 拦截成果统计</b>
@@ -544,7 +543,8 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                 edit_config(do_addroute)
                 write_biz_log("SYS", f"添加自动收纳规则: {folder_name}")
                 
-                # 解耦优化：取消了死等 ROUTE_QUEUE.join()，实现了瞬间秒回！
+                await safe_reply(event, f"⏳ <b>正在为您扫描并自动添加群组...</b>\n<i>(系统会遵守 Telegram 接口频率限制缓慢添加，请耐心等待...)</i>", auto_delete=0)
+                
                 report = await auto_route_groups(client, {folder_name: regex})
                 
                 import sync_engine
@@ -592,7 +592,6 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                 importlib.reload(sync_engine)
                 cfg = _load_fresh_config()
                 
-                # 解耦优化：无需死等队列，瞬间返回报告
                 report = await auto_route_groups(client, cfg.get("auto_route_rules", {}))
                     
                 f_new, c_new, has_changes, sync_report = await sync_engine.sync(client, cfg)
@@ -622,7 +621,7 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                 await safe_reply(event, msg, 25)
 
         elif command == "update":
-            reply_msg = await event.edit("🔄 <b>正在获取最新版程序...</b>\n<i>(系统将立即执行热重启，未完队列将在开机后自动重组)</i>")
+            reply_msg = await event.edit("🔄 <b>正在获取最新版程序...</b>\n<i>(系统将立即执行热重启，未完队列将在开机后由引擎接管)</i>")
             write_biz_log("SYS", "开始进行一键更新")
             if reply_msg:
                 with open(os.path.join(WORK_DIR, ".last_msg"), "w") as f:
@@ -630,7 +629,6 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
             await asyncio.sleep(1)
             cmd = f"curl -fsSL https://github.com/chenmo8848/TG-Radar/archive/refs/heads/main.zip -o /tmp/tgr.zip && unzip -q -o /tmp/tgr.zip -d /tmp/ && cp -af /tmp/TG-Radar-main/. {WORK_DIR}/ && rm -rf /tmp/tgr.zip /tmp/TG-Radar-main && curl -fsSL https://api.github.com/repos/chenmo8848/TG-Radar/commits/main | python3 -c \"import sys,json; print(json.load(sys.stdin).get('sha',''))\" > {WORK_DIR}/.commit_sha"
             subprocess.run(cmd, shell=True)
-            # 解耦优化：完全不等待，秒杀进程，把烂摊子甩给重启后的自愈引擎！
             subprocess.Popen(["sudo", "systemctl", "restart", SERVICE_NAME])
 
         elif command == "restart":
@@ -640,7 +638,6 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
                 with open(os.path.join(WORK_DIR, ".last_msg"), "w") as f:
                     json.dump({"chat_id": "me", "msg_id": reply_msg.id, "action": "restart"}, f)
             await asyncio.sleep(1.5)
-            # 解耦优化：完全不等待，秒杀进程！
             subprocess.Popen(["sudo", "systemctl", "restart", SERVICE_NAME])
 
     @client.on(events.NewMessage)
@@ -693,7 +690,6 @@ def register_handlers(client, state: AppState, notify_channel, cmd_prefix) -> No
         except Exception as e:
             logger.error("消息处理发生错误: %s", e)
 
-    # 现在的逻辑是完全解耦的，我们只需要告诉控制台我们在断线，不需要等待长列队了。
     await client.run_until_disconnected()
 
 async def main():
@@ -739,7 +735,7 @@ async def main():
         await send_startup_notification(client, notify_channel, state, cmd_prefix)
         write_biz_log("SYS", "程序已成功启动并开始运行")
         
-        await client.run_until_disconnected() 
+        await client.run_until_disconnected()
 
 if __name__ == "__main__":
     try: asyncio.run(main())
