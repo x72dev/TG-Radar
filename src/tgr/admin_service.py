@@ -142,12 +142,13 @@ class AdminApp:
     def _register_handler(self, client: TelegramClient) -> None:
         @client.on(events.NewMessage(outgoing=True))
         async def on_message(event) -> None:
-            text = (event.raw_text or "").strip()
-            if not text or not text.startswith(self.config.cmd_prefix):
-                return
             if not event.is_private:
                 return
             if int(getattr(event, "chat_id", 0) or 0) != self.self_id:
+                return
+            text = (event.raw_text or "").strip()
+            if not text or not text.startswith(self.config.cmd_prefix):
+                await self.plugin_manager.process_core_message(self, event)
                 return
             self.db.log_event("INFO", "CMD_SEEN", text[:200])
             m = re.match(rf"^{re.escape(self.config.cmd_prefix)}(\w+)[ \t]*([\s\S]*)", text, re.IGNORECASE)
@@ -163,7 +164,6 @@ class AdminApp:
                     await self.client.edit_message("me", event.id, panel("TG-Radar · 任务已接收", [section("调度", [bullet("命令", command), bullet("跟踪号", trace, code=False)])]))
                 except Exception:
                     pass
-
             async def _runner():
                 try:
                     ok = await self.plugin_manager.dispatch_admin_command(command, self, event, args)
