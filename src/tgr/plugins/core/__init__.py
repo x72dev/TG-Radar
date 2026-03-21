@@ -1,1 +1,0 @@
-# externalized core plugins

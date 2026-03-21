@@ -1,1 +1,0 @@
-# externalized admin plugins
