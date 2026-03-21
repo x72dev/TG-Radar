@@ -1,9 +1,6 @@
 <div align="center">
-
 # ⚡ TG-Radar
-
 **Telegram 关键词监控系统**
-
 全解耦插件架构 · 双进程分离 · 事件驱动同步
 
 <br/>
