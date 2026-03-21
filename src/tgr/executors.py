@@ -95,6 +95,9 @@ class AdminExecutors:
         return proc.returncode, (stdout or b"").decode("utf-8", errors="replace").strip()
 
     async def _update(self, job: AdminJob) -> JobResult:
+        # Snapshot plugin mtimes BEFORE pull
+        before = self._snapshot_plugin_mtimes()
+
         outputs = []
         code, out = await self._run_git_pull(self.config.work_dir)
         outputs.append(f"[core] {out or 'ok'}")
@@ -106,7 +109,27 @@ class AdminExecutors:
             outputs.append(f"[plugins] {po or 'ok'}")
             if pc != 0:
                 return JobResult(status="failed", summary="插件更新失败", detail="\n".join(outputs), log_action="UPDATE", log_level="ERROR")
-        return JobResult(status="done", summary="更新完成", detail="\n".join(outputs), log_action="UPDATE")
+
+        # Compare AFTER pull — find changed plugins
+        after = self._snapshot_plugin_mtimes()
+        changed = sorted(set(
+            [n for n, t in after.items() if before.get(n) != t] +
+            [n for n in after if n not in before]
+        ))
+
+        return JobResult(status="done", summary="更新完成", detail="\n".join(outputs),
+                         payload={"changed_plugins": changed}, log_action="UPDATE")
+
+    def _snapshot_plugin_mtimes(self) -> dict[str, float]:
+        from pathlib import Path
+        result = {}
+        root = Path(self.config.plugins_root)
+        if not root.exists():
+            return result
+        for f in root.rglob("*.py"):
+            if f.name != "__init__.py":
+                result[f.stem] = f.stat().st_mtime
+        return result
 
     async def _restart(self, job: AdminJob) -> JobResult:
         delay = float(job.payload.get("delay", self.config.restart_delay_seconds))
