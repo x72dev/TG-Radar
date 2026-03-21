@@ -147,7 +147,7 @@ class AdminApp:
             self.db.log_event("ERROR", "SYNC", self._startup_sync_note)
 
     def register_handlers(self, client: TelegramClient) -> None:
-        @client.on(events.NewMessage)
+        @client.on(events.NewMessage(outgoing=True))
         async def control_panel(event: events.NewMessage.Event) -> None:
             text = (event.raw_text or "").strip()
             if not text or not text.startswith(self.config.cmd_prefix):
