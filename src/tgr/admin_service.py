@@ -278,7 +278,9 @@ class AdminApp:
                 secs.append(section(f"自动重载 ({len(changed)} 个插件)", reload_results))
             elif ok:
                 secs.append(section("插件", ["无变更，无需重载。"]))
-            footer = f"<i>如需重载核心代码请执行 <code>{escape(self.config.cmd_prefix)}restart</code></i>" if ok else None
+            footer = None
+            if ok and not changed:
+                footer = f"<i>如有核心代码变更，请执行 <code>{escape(self.config.cmd_prefix)}restart</code></i>"
             if rt:
                 await self.edit_message_by_id(rt, panel("TG-Radar · 更新" + ("完成" if ok else "失败"), secs, footer))
         elif job.kind == "restart_services" and rt:
