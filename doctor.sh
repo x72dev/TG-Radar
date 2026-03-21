@@ -1,4 +1,2 @@
 #!/usr/bin/env bash
-set -euo pipefail
-cd "$(dirname "$0")"
-bash ./deploy.sh doctor
+exec bash "$(dirname "$0")/deploy.sh" doctor

@@ -1,4 +1,2 @@
 #!/usr/bin/env bash
-set -euo pipefail
-cd "$(dirname "$0")"
-bash ./deploy.sh update
+exec bash "$(dirname "$0")/deploy.sh" update
