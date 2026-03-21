@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TG-Radar Config",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["api_id", "api_hash"],
+  "properties": {
+    "api_id": {"type": "integer", "description": "Telegram API ID"},
+    "api_hash": {"type": "string", "description": "Telegram API hash"},
+    "global_alert_channel_id": {"type": ["integer", "null"]},
+    "notify_channel_id": {"type": ["integer", "null"]},
+    "cmd_prefix": {"type": "string", "default": "-"},
+    "service_name_prefix": {"type": "string", "default": "tg-radar"},
+    "operation_mode": {"type": "string", "enum": ["stable", "balanced", "aggressive"], "default": "stable"},
+    "auto_sync_enabled": {"type": "boolean", "default": true},
+    "auto_sync_time": {"type": "string", "default": "03:40"},
+    "auto_route_enabled": {"type": "boolean", "default": true},
+    "auto_route_time": {"type": "string", "default": "04:20"},
+    "panel_auto_delete_seconds": {"type": "integer", "default": 45},
+    "notify_auto_delete_seconds": {"type": "integer", "default": 0},
+    "recycle_fallback_command_seconds": {"type": "integer", "default": 8},
+    "repo_url": {"type": "string"},
+    "folder_rules": {"type": "object", "default": {}},
+    "auto_route_rules": {"type": "object", "default": {}},
+    "_system_cache": {"type": "object", "default": {}}
+  }
+}

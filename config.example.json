@@ -1,0 +1,20 @@
+{
+  "api_id": 1234567,
+  "api_hash": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "global_alert_channel_id": null,
+  "notify_channel_id": null,
+  "cmd_prefix": "-",
+  "service_name_prefix": "tg-radar",
+  "operation_mode": "stable",
+  "auto_sync_enabled": true,
+  "auto_sync_time": "03:40",
+  "auto_route_enabled": true,
+  "auto_route_time": "04:20",
+  "panel_auto_delete_seconds": 45,
+  "notify_auto_delete_seconds": 0,
+  "recycle_fallback_command_seconds": 8,
+  "repo_url": "https://github.com/chenmo8848/TG-Radar.git",
+  "auto_route_rules": {},
+  "folder_rules": {},
+  "_system_cache": {}
+}
