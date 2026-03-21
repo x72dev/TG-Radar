@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS admin_jobs (
     priority INTEGER NOT NULL DEFAULT 100,
     dedupe_key TEXT,
     payload_json TEXT NOT NULL DEFAULT '{}',
+    run_after TEXT,
     origin TEXT NOT NULL DEFAULT 'system',
     visible INTEGER NOT NULL DEFAULT 1,
     last_error TEXT,
@@ -119,6 +120,7 @@ class AdminJob:
     priority: int
     dedupe_key: str | None
     payload: dict[str, Any]
+    run_after: str | None
     origin: str
     visible: bool
     retries: int
@@ -150,6 +152,13 @@ LOG_PRESENTATION = {
     "CORE_RELOAD": ("normal", "🟡", "热更新", "规则已热更新"),
     "ROUTE_TASK": ("normal", "🟡", "自动收纳", "自动收纳任务已执行"),
     "COMMAND": ("critical", "🔴", "命令执行", "命令执行异常"),
+    "CMD_SEEN": ("normal", "🟡", "命令入口", "已看到命令文本"),
+    "CMD_ACCEPTED": ("important", "🟢", "命令接收", "命令已进入调度层"),
+    "CMD_DROP": ("normal", "🟠", "命令过滤", "命令未通过入口过滤"),
+    "JOB_QUEUE": ("normal", "🟡", "后台任务", "后台任务已排队"),
+    "JOB_START": ("normal", "🟡", "后台任务", "后台任务开始执行"),
+    "JOB_DONE": ("important", "🟢", "后台任务", "后台任务已完成"),
+    "JOB_FAIL": ("critical", "🔴", "后台任务", "后台任务执行失败"),
 }
 
 
@@ -235,6 +244,9 @@ class RadarDB:
     def _init_db(self) -> None:
         with self._connect() as conn:
             conn.executescript(SCHEMA)
+            cols = {row['name'] for row in conn.execute("PRAGMA table_info(admin_jobs)").fetchall()}
+            if 'run_after' not in cols:
+                conn.execute("ALTER TABLE admin_jobs ADD COLUMN run_after TEXT")
             now = self._now()
             for key, value in {
                 "revision": "1",
@@ -635,27 +647,36 @@ class RadarDB:
             ).fetchone()
             return int(row[0])
 
-    def enqueue_job(self, kind: str, payload: dict[str, Any] | None = None, *, priority: int = 100, dedupe_key: str | None = None, origin: str = "system", visible: bool = True) -> tuple[int | None, bool]:
+    def enqueue_job(self, kind: str, payload: dict[str, Any] | None = None, *, priority: int = 100, dedupe_key: str | None = None, origin: str = "system", visible: bool = True, run_after: str | None = None) -> tuple[int | None, bool]:
         now = self._now()
         payload_json = json.dumps(payload or {}, ensure_ascii=False)
         with self.tx() as conn:
             if dedupe_key:
                 existing = conn.execute(
-                    "SELECT id FROM admin_jobs WHERE dedupe_key=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1",
+                    "SELECT id, status, run_after FROM admin_jobs WHERE dedupe_key=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1",
                     (dedupe_key,),
                 ).fetchone()
                 if existing is not None:
+                    if existing["status"] == "queued":
+                        current_run_after = existing["run_after"]
+                        if run_after and (not current_run_after or run_after < current_run_after):
+                            conn.execute(
+                                "UPDATE admin_jobs SET run_after=?, payload_json=?, priority=?, updated_at=? WHERE id=?",
+                                (run_after, payload_json, int(priority), now, int(existing["id"])),
+                            )
                     return int(existing[0]), False
             cur = conn.execute(
-                "INSERT INTO admin_jobs(kind, status, priority, dedupe_key, payload_json, origin, visible, created_at, updated_at) VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?)",
-                (kind, int(priority), dedupe_key, payload_json, origin, int(visible), now, now),
+                "INSERT INTO admin_jobs(kind, status, priority, dedupe_key, payload_json, run_after, origin, visible, created_at, updated_at) VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?)",
+                (kind, int(priority), dedupe_key, payload_json, run_after, origin, int(visible), now, now),
             )
             return int(cur.lastrowid), True
 
     def claim_next_job(self, worker: str = "admin") -> AdminJob | None:
+        now = self._now()
         with self.tx() as conn:
             row = conn.execute(
-                "SELECT id, kind, status, priority, dedupe_key, payload_json, origin, visible, retries, last_error FROM admin_jobs WHERE status='queued' ORDER BY priority ASC, id ASC LIMIT 1"
+                "SELECT id, kind, status, priority, dedupe_key, payload_json, run_after, origin, visible, retries, last_error FROM admin_jobs WHERE status='queued' AND (run_after IS NULL OR run_after<=?) ORDER BY priority ASC, COALESCE(run_after, created_at) ASC, id ASC LIMIT 1",
+                (now,),
             ).fetchone()
             if row is None:
                 return None
@@ -670,6 +691,7 @@ class RadarDB:
                 priority=int(row['priority']),
                 dedupe_key=row['dedupe_key'],
                 payload=json.loads(row['payload_json'] or '{}'),
+                run_after=row['run_after'],
                 origin=str(row['origin']),
                 visible=bool(int(row['visible'])),
                 retries=int(row['retries']),
@@ -703,6 +725,13 @@ class RadarDB:
                     "SELECT COUNT(*) FROM admin_jobs WHERE status IN ('queued','running')"
                 ).fetchone()
             return int(row[0])
+
+    def list_open_jobs(self, limit: int = 20) -> list[sqlite3.Row]:
+        with self._connect() as conn:
+            return conn.execute(
+                "SELECT id, kind, status, priority, run_after, origin, updated_at FROM admin_jobs WHERE status IN ('queued','running') ORDER BY priority ASC, COALESCE(run_after, created_at) ASC, id ASC LIMIT ?",
+                (limit,),
+            ).fetchall()
 
     def cleanup_finished_jobs(self, keep_last: int = 200) -> None:
         with self.tx() as conn:

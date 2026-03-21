@@ -19,15 +19,15 @@
 
 **TG-Radar** 是一套面向 Telegram 个人号场景的现代化雷达系统，核心围绕三条主线：
 
-- **分组拓扑自动同步**
-- **关键词实时监听与热更新**
+- **分组拓扑低频维护同步**
+- **关键词实时监听与事件驱动热更新**
 - **Saved Messages 控制台式交互**
 
 这一版保留原项目的实战逻辑，并将底层整理为更稳定的 **Plan C**：
 
-- **Admin Service**：负责收藏夹交互、自动同步、自动收纳、更新与重启
+- **Admin Service**：负责收藏夹交互、后台调度、同步、自动收纳、更新与重启
 - **Core Service**：负责实时监听、规则匹配、告警发送
-- **SQLite WAL**：负责状态共享、revision 热更新、路由任务持久化
+- **SQLite WAL**：负责状态共享、任务持久化、配置快照兼容
 
 ---
 
@@ -35,11 +35,11 @@
 
 | 模块 | 说明 |
 |---|---|
-| 自动同步 | 支持定时同步、手动同步、revision 热更新 |
+| 自动同步 | 支持每日错峰同步、手动同步、事件驱动热更新 |
 | Telegram 交互 | 在 `Saved Messages` 中完整管理分组、规则、路由、同步、更新、重启 |
 | 告警体验 | 同一目标聚合告警、重复命中计数、原消息直达链接 |
 | 关键事件日志 | `-log` 默认只展示关键事件，去噪、中文化、卡片化 |
-| 自动收纳 | 基于标题规则自动识别新群并补入目标 TG 分组 |
+| 自动收纳 | 支持每日错峰扫描与手动扫描，不和前台交互抢链路 |
 | 长期运行 | systemd 双服务、SQLite WAL、持久化队列 |
 
 ---
@@ -93,9 +93,12 @@ TR uninstall
 -rules 示例分组
 -enable 示例分组
 -addrule 示例分组 规则A 监控词A 监控词B
+-setrule 示例分组 规则A 新表达式
 -delrule 示例分组 规则A
 -delrule 示例分组 规则A 监控词A
 -addroute 示例分组 标题词A 标题词B
+-routescan
+-jobs
 -sync
 -update
 -restart
@@ -103,9 +106,10 @@ TR uninstall
 
 ### 规则写法
 
+- 空格、英文逗号、中文逗号都会被识别为分隔符
 - 多个普通词会自动合并为 **OR 规则**
 - 单个正则表达式会按原样使用
-- 普通词和正则片段可以混合输入
+- 同名规则默认 **追加** 新词；需要整体覆盖时请使用 `-setrule`
 - 分组名、规则名、短语关键词如包含空格，请用引号包起来
 
 ### 交互特性
@@ -113,7 +117,7 @@ TR uninstall
 - **优先编辑原命令消息**，减少控制台刷屏
 - 帮助面板、状态面板、同步结果属于**临时面板**，可按配置自动回收
 - **关键词告警与系统通知默认保留**，不会自动回收
-- 分组启停、规则变更、缓存变动会通过 **revision watcher** 即时生效
+- 分组启停、规则变更、缓存变动会通过 **事件驱动 reload** 即时生效
 
 ---
 
@@ -125,11 +129,6 @@ TG-Radar/
 ├─ deploy.sh
 ├─ config.example.json
 ├─ requirements.txt
-├─ DELIVERY_NOTES.md
-├─ runtime/
-│  └─ README.md
-├─ scripts/
-│  └─ cleanup_legacy.sh
 └─ src/
    ├─ radar_admin.py
    ├─ radar_core.py
@@ -138,11 +137,11 @@ TG-Radar/
    └─ tgr/
       ├─ admin_service.py
       ├─ core_service.py
+      ├─ scheduler.py
       ├─ sync_logic.py
       ├─ db.py
       ├─ config.py
-      ├─ telegram_utils.py
-      └─ ...
+      └─ telegram_utils.py
 ```
 
 ---
@@ -186,14 +185,14 @@ TR cleanup-legacy
 
 - 首次 Telegram 登录仍然需要输入 **手机号 / 验证码 / 二步密码（如已开启）**
 - `runtime/` 中的日志、session、数据库文件都属于运行时数据，不建议提交到 GitHub
-- 上传仓库时请保留 `runtime/README.md`，不要提交真实 session 与数据库
+- 上传仓库时不要提交真实 session 与数据库
 
 
 ## Admin 三层调度架构
 
 - **命令层**：接收 Telegram 命令并快速回执。
-- **调度层**：统一排队 sync / route / update / restart / snapshot flush。
-- **执行层**：后台执行重任务，避免阻塞命令响应。
+- **调度层**：统一延迟、合并、串行 sync / route / update / restart / snapshot flush。
+- **执行层**：后台执行重任务，尽量不阻塞命令响应。
 
 ## 配置说明
 

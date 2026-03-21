@@ -1,140 +1,111 @@
 {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "title": "TG-Radar Configuration Schema",
-    "type": "object",
-    "description_zh": "TG-Radar 运行配置说明。运行时请使用纯净的 config.json，本文件仅提供字段说明。",
-    "fields": {
-        "api_id": {
-            "type": "integer",
-            "default": 1234567,
-            "description_zh": "Telegram API ID。前往 my.telegram.org 创建应用后获取。",
-            "example": 1234567
-        },
-        "api_hash": {
-            "type": "string",
-            "default": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-            "description_zh": "Telegram API Hash。与 API ID 配套使用。",
-            "example": "0123456789abcdef0123456789abcdef"
-        },
-        "global_alert_channel_id": {
-            "type": [
-                "integer",
-                "null"
-            ],
-            "default": null,
-            "description_zh": "默认关键词告警目标频道 ID。为空时必须在分组级别单独配置。",
-            "example": -1001234567890
-        },
-        "notify_channel_id": {
-            "type": [
-                "integer",
-                "null"
-            ],
-            "default": null,
-            "description_zh": "系统通知目标频道 ID。为空时发送到 Saved Messages。",
-            "example": -1001234567890
-        },
-        "cmd_prefix": {
-            "type": "string",
-            "default": "-",
-            "description_zh": "Telegram 控制命令前缀，建议 1 到 3 个字符。",
-            "example": "-"
-        },
-        "service_name_prefix": {
-            "type": "string",
-            "default": "tg-radar",
-            "description_zh": "systemd 服务名前缀。",
-            "example": "tg-radar"
-        },
-        "sync_interval_seconds": {
-            "type": "integer",
-            "default": 1800,
-            "description_zh": "自动同步轮询间隔，单位秒。",
-            "example": 1800
-        },
-        "route_worker_interval_seconds": {
-            "type": "integer",
-            "default": 4,
-            "description_zh": "自动收纳任务之间的节流间隔，单位秒。",
-            "example": 4
-        },
-        "revision_poll_seconds": {
-            "type": "integer",
-            "default": 0,
-            "description_zh": "Core 的兜底轮询重载间隔，单位秒。默认 0，表示关闭短周期轮询，改用事件驱动热更新；仅在需要额外保险时再开启。",
-            "example": 0
-        },
-        "panel_auto_delete_seconds": {
-            "type": "integer",
-            "default": 45,
-            "description_zh": "临时面板自动回收时间，单位秒。关键词告警不受此项影响。",
-            "example": 45
-        },
-        "notify_auto_delete_seconds": {
-            "type": "integer",
-            "default": 0,
-            "description_zh": "系统通知自动回收时间，0 表示保留。",
-            "example": 0
-        },
-        "recycle_fallback_command_seconds": {
-            "type": "integer",
-            "default": 8,
-            "description_zh": "当无法编辑原命令消息、改为回复时，原命令消息的回收时间。",
-            "example": 8
-        },
-        "repo_url": {
-            "type": "string",
-            "default": "https://github.com/chenmo8848/TG-Radar.git",
-            "description_zh": "仓库地址，用于 update 流程与部署信息展示。",
-            "example": "https://github.com/chenmo8848/TG-Radar.git"
-        },
-        "scheduler_poll_seconds": {
-            "type": "integer",
-            "default": 1,
-            "description_zh": "Admin 调度层检查任务队列的间隔，单位秒。",
-            "example": 1
-        },
-        "snapshot_flush_debounce_seconds": {
-            "type": "integer",
-            "default": 3,
-            "description_zh": "配置快照回写的防抖时间，单位秒。",
-            "example": 3
-        },
-        "max_parallel_admin_jobs": {
-            "type": "integer",
-            "default": 2,
-            "description_zh": "Admin 同时执行后台任务的最大并发数。",
-            "example": 2
-        },
-        "route_scan_interval_seconds": {
-            "type": "integer",
-            "default": 120,
-            "description_zh": "自动收纳扫描间隔，单位秒。",
-            "example": 120
-        },
-        "sync_auto_jitter_seconds": {
-            "type": "integer",
-            "default": 8,
-            "description_zh": "自动同步首次启动时的随机抖动秒数，用于降低启动尖峰。",
-            "example": 8
-        },
-        "auto_route_rules": {
-            "type": "object",
-            "default": {},
-            "description_zh": "旧版兼容字段，由系统自动回写。建议通过 Telegram 命令维护。",
-            "example": {}
-        },
-        "folder_rules": {
-            "type": "object",
-            "default": {},
-            "description_zh": "旧版兼容字段，由系统自动回写。建议通过 Telegram 命令维护。",
-            "example": {}
-        },
-        "_system_cache": {
-            "type": "object",
-            "default": {},
-            "description_zh": "旧版兼容缓存字段，由系统自动回写。",
-            "example": {}
-        }
+    "api_id": {
+        "type": "integer",
+        "description_zh": "Telegram API ID。前往 my.telegram.org 获取。",
+        "default": 1234567,
+        "example": 12345678
+    },
+    "api_hash": {
+        "type": "string",
+        "description_zh": "Telegram API HASH。前往 my.telegram.org 获取。",
+        "default": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "example": "0123456789abcdef0123456789abcdef"
+    },
+    "global_alert_channel_id": {
+        "type": ["integer", "null"],
+        "description_zh": "默认关键词告警目标。留空表示分组未单独设置时暂不发送默认告警。",
+        "default": null,
+        "example": -1001234567890
+    },
+    "notify_channel_id": {
+        "type": ["integer", "null"],
+        "description_zh": "系统通知目标。留空时发送到 Saved Messages。",
+        "default": null,
+        "example": -1001234567890
+    },
+    "cmd_prefix": {
+        "type": "string",
+        "description_zh": "Telegram 控制命令前缀。建议 1 到 3 个字符。",
+        "default": "-",
+        "example": "-"
+    },
+    "service_name_prefix": {
+        "type": "string",
+        "description_zh": "systemd 服务名前缀。默认生成 tg-radar-admin / tg-radar-core。",
+        "default": "tg-radar",
+        "example": "tg-radar"
+    },
+    "operation_mode": {
+        "type": "string",
+        "description_zh": "运行模式。stable 为稳定优先，balanced 为均衡，aggressive 为更积极的维护节奏。",
+        "default": "stable",
+        "example": "stable",
+        "enum": ["stable", "balanced", "aggressive"]
+    },
+    "auto_sync_enabled": {
+        "type": "boolean",
+        "description_zh": "是否启用每日自动同步。自动同步只负责低频维护，不影响手动 sync。",
+        "default": true,
+        "example": true
+    },
+    "auto_sync_time": {
+        "type": "string",
+        "description_zh": "每日自动同步时间，24 小时制 HH:MM。系统会在该时间基础上自动增加抖动和错峰。",
+        "default": "03:40",
+        "example": "03:40"
+    },
+    "auto_route_enabled": {
+        "type": "boolean",
+        "description_zh": "是否启用每日自动收纳扫描。",
+        "default": true,
+        "example": true
+    },
+    "auto_route_time": {
+        "type": "string",
+        "description_zh": "每日自动收纳扫描时间，24 小时制 HH:MM。建议与自动同步错峰 20 分钟以上。",
+        "default": "04:20",
+        "example": "04:20"
+    },
+    "panel_auto_delete_seconds": {
+        "type": "integer",
+        "description_zh": "临时面板自动回收时间。0 表示不自动回收。关键词告警和系统通知不会受该项影响。",
+        "default": 45,
+        "example": 45
+    },
+    "notify_auto_delete_seconds": {
+        "type": "integer",
+        "description_zh": "系统通知自动回收时间。默认 0，表示长期保留。",
+        "default": 0,
+        "example": 0
+    },
+    "recycle_fallback_command_seconds": {
+        "type": "integer",
+        "description_zh": "当系统无法编辑原命令消息而改为回复新消息时，原命令消息的回收秒数。0 表示不回收。",
+        "default": 8,
+        "example": 8
+    },
+    "repo_url": {
+        "type": "string",
+        "description_zh": "仓库地址。用于 update 和安装流程。",
+        "default": "https://github.com/chenmo8848/TG-Radar.git",
+        "example": "https://github.com/chenmo8848/TG-Radar.git"
+    },
+    "auto_route_rules": {
+        "type": "object",
+        "description_zh": "自动收纳规则快照。通常由命令维护和系统回写生成。",
+        "default": {},
+        "example": {}
+    },
+    "folder_rules": {
+        "type": "object",
+        "description_zh": "分组规则快照。通常由命令维护和系统回写生成。",
+        "default": {},
+        "example": {}
+    },
+    "_system_cache": {
+        "type": "object",
+        "description_zh": "系统缓存快照，用于兼容和导出。通常由系统维护。",
+        "default": {},
+        "example": {}
     }
 }

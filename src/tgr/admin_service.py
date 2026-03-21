@@ -30,10 +30,12 @@ from .telegram_utils import (
     format_duration,
     html_code,
     normalize_pattern_from_terms,
+    merge_patterns,
     panel,
     section,
     shorten_path,
     soft_kv,
+    split_terms,
     try_remove_terms_from_pattern,
 )
 from .version import __version__
@@ -112,18 +114,21 @@ class AdminApp:
                 return
             if not text.startswith(self.config.cmd_prefix):
                 return
+            self.db.log_event("INFO", "CMD_SEEN", text[:200])
             if not await self.is_saved_messages_command(event):
+                self.db.log_event("INFO", "CMD_DROP", "not_saved_messages_or_not_self")
                 return
 
             match = re.match(rf"^{re.escape(self.config.cmd_prefix)}(\w+)[ \t]*([\s\S]*)", text, re.IGNORECASE)
             if not match:
+                self.db.log_event("INFO", "CMD_DROP", "bad_pattern")
                 return
 
             command = match.group(1).lower()
             args = (match.group(2) or "").strip()
             self.last_command_ts = time.monotonic()
             self.logger.info("[CMD_RX] command=%s args=%s", command, args[:200])
-            self.db.log_event("DEBUG", "COMMAND_RX", f"{command} {args[:200]}")
+            self.db.log_event("INFO", "CMD_ACCEPTED", f"{command} {args[:200]}")
 
             async def _runner() -> None:
                 try:
@@ -175,7 +180,7 @@ class AdminApp:
                 event,
                 panel(
                     "TG-Radar 在线心跳",
-                    [section("快速状态", [bullet("管理层运行", format_duration((datetime.now() - self.started_at).total_seconds())), bullet("历史命中", stats.get("total_hits", "0")), bullet("热更新", "事件驱动"), bullet("自动同步", f"{self.config.sync_interval_seconds} 秒")])],
+                    [section("快速状态", [bullet("管理层运行", format_duration((datetime.now() - self.started_at).total_seconds())), bullet("历史命中", stats.get("total_hits", "0")), bullet("热更新", "事件驱动"), bullet("自动同步", f"{self.config.auto_sync_time} 每日执行" if self.config.auto_sync_enabled else "已关闭", code=False)])],
                 ),
                 auto_delete=12,
             )
@@ -328,7 +333,37 @@ class AdminApp:
         if command == "addrule":
             tokens = shlex.split(args)
             if len(tokens) < 3:
-                await self.safe_reply(event, panel("参数不足", [section("示例", [f"<code>{prefix}addrule 示例分组 规则A 监控词A 监控词B</code>", f"<code>{prefix}addrule 示例分组 规则A 项目(?:A|B|C)</code>"])]))
+                await self.safe_reply(event, panel("参数不足", [section("示例", [f"<code>{prefix}addrule 示例分组 规则A 监控词A 监控词B</code>", f"<code>{prefix}addrule 示例分组 规则A 项目(?:A|B|C)</code>", f"<code>{prefix}setrule 示例分组 规则A 全量表达式</code>"])]))
+                return
+            folder = self.find_folder(tokens[0]) or tokens[0]
+            rule_name = tokens[1]
+            incoming_pattern = normalize_pattern_from_terms(tokens[2:])
+            if self.db.get_folder(folder) is None:
+                self.db.upsert_folder(folder, None, enabled=False)
+            existing_rows = self.db.get_rules_for_folder(folder)
+            existing_rule = next((row for row in existing_rows if row["rule_name"] == rule_name), None)
+            merged_pattern = merge_patterns(existing_rule["pattern"] if existing_rule else None, incoming_pattern)
+            self.db.upsert_rule(folder, rule_name, merged_pattern)
+            self.queue_snapshot_flush()
+            self.queue_core_reload("add_rule", f"{folder}/{rule_name}")
+            action = "UPDATE_RULE" if existing_rule else "ADD_RULE"
+            self.db.log_event("INFO", action, f"{folder}/{rule_name} -> {merged_pattern}")
+            new_terms = split_terms(tokens[2:])
+            new_terms_preview = " / ".join(new_terms[:6]) + ("…" if len(new_terms) > 6 else "")
+            await self.safe_reply(
+                event,
+                panel(
+                    "规则已追加",
+                    [section("规则详情", [bullet("分组", folder), bullet("规则名", rule_name), bullet("新增词项", new_terms_preview, code=False), bullet("当前表达式", merged_pattern)])],
+                    "<i>同名规则默认追加新词并自动去重。若要整条覆盖，请使用 <code>{0}setrule</code>。</i>".format(prefix),
+                ),
+            )
+            return
+
+        if command == "setrule":
+            tokens = shlex.split(args)
+            if len(tokens) < 3:
+                await self.safe_reply(event, panel("参数不足", [section("示例", [f"<code>{prefix}setrule 示例分组 规则A 新表达式</code>"])]))
                 return
             folder = self.find_folder(tokens[0]) or tokens[0]
             rule_name = tokens[1]
@@ -337,9 +372,9 @@ class AdminApp:
                 self.db.upsert_folder(folder, None, enabled=False)
             self.db.upsert_rule(folder, rule_name, pattern)
             self.queue_snapshot_flush()
-            self.queue_core_reload("add_rule", f"{folder}/{rule_name}")
-            self.db.log_event("INFO", "ADD_RULE", f"{folder}/{rule_name} -> {pattern}")
-            await self.safe_reply(event, panel("规则已保存", [section("规则详情", [bullet("分组", folder), bullet("规则名", rule_name), bullet("表达式", pattern)])], "<i>如需让该分组立即参与监听，请确认分组处于开启状态。</i>"))
+            self.queue_core_reload("set_rule", f"{folder}/{rule_name}")
+            self.db.log_event("INFO", "UPDATE_RULE", f"{folder}/{rule_name} -> {pattern}")
+            await self.safe_reply(event, panel("规则已覆盖", [section("规则详情", [bullet("分组", folder), bullet("规则名", rule_name), bullet("表达式", pattern)])]))
             return
 
         if command == "delrule":
@@ -419,16 +454,26 @@ class AdminApp:
             await self.run_sync_command(event)
             return
 
+        if command == "routescan":
+            await self.run_route_scan_command(event)
+            return
+
+        if command == "jobs":
+            await self.safe_reply(event, self.render_jobs_message(), auto_delete=0)
+            return
+
         if command == "restart":
             self.write_last_message(event.id, "restart")
             result = self.command_bus.submit(
                 "restart_services",
-                payload={"reply_to": int(event.id), "delay": 1.2},
+                payload={"reply_to": int(event.id), "delay": self.config.restart_delay_seconds},
                 priority=20,
                 dedupe_key="restart_services",
                 origin="telegram",
                 visible=True,
+                delay_seconds=self.config.restart_delay_seconds,
             )
+            self.db.log_event("INFO", "JOB_QUEUE", "restart_services queued")
             title = "重启任务已排队" if result.created else "重启任务已在后台执行"
             await self.safe_reply(event, panel(title, [section("执行说明", [bullet("影响范围", "Admin / Core 双服务", code=False), bullet("任务状态", "数据库中未完成的路由任务会继续保留", code=False), bullet("处理方式", "调度层会在空闲时下发重启指令", code=False)])]), auto_delete=0)
             return
@@ -448,9 +493,11 @@ class AdminApp:
             dedupe_key="sync_manual",
             origin="telegram",
             visible=True,
+            delay_seconds=self.config.manual_heavy_delay_seconds,
         )
-        title = "同步任务已排队" if result.created else "同步任务已在后台执行"
-        body = ["· 正在后台比对分组拓扑", "· 正在准备刷新缓存与规则快照", "· 完成后会把结果回写到当前消息"]
+        self.db.log_event("INFO", "JOB_QUEUE", "manual sync queued")
+        title = "同步任务已排队" if result.created else "同步任务已在后台等待"
+        body = ["· 已收到命令，前台不会被重任务阻塞", "· 系统会延迟几秒后再启动全量同步", "· 完成后会把结果回写到当前消息"]
         await self.safe_reply(event, panel(title, [section("调度层已接收", body)]), auto_delete=0)
 
     async def run_update_command(self, event: events.NewMessage.Event) -> None:
@@ -464,8 +511,10 @@ class AdminApp:
             dedupe_key="update_repo",
             origin="telegram",
             visible=True,
+            delay_seconds=self.config.update_delay_seconds,
         )
-        title = "更新任务已排队" if result.created else "更新任务已在后台执行"
+        self.db.log_event("INFO", "JOB_QUEUE", "update_repo queued")
+        title = "更新任务已排队" if result.created else "更新任务已在后台等待"
         await self.safe_reply(event, panel(title, [section("后台执行", ["· 正在执行 git pull --ff-only", "· 如拉取成功，结果会直接回写到当前消息", "· 需要时可继续下发 restart 任务"])]), auto_delete=0)
 
     def queue_snapshot_flush(self) -> None:
@@ -479,6 +528,7 @@ class AdminApp:
             dedupe_key="config_snapshot_flush",
             origin="system",
             visible=False,
+            delay_seconds=self.config.snapshot_flush_debounce_seconds,
         )
 
     def queue_core_reload(self, reason: str, detail: str = "") -> None:
@@ -489,6 +539,7 @@ class AdminApp:
             dedupe_key="reload_core",
             origin="system",
             visible=False,
+            delay_seconds=self.config.reload_debounce_seconds,
         )
 
     async def after_job(self, job: AdminJob, result: JobResult) -> None:
@@ -502,6 +553,14 @@ class AdminApp:
             sync_report, route_report = self.last_sync_result or (None, None)
             if sync_report is not None and route_report is not None:
                 await self.send_sync_report(sync_report, route_report, automatic=True)
+            return
+        if job.kind == "route_scan":
+            reply_to = int(job.payload.get("reply_to") or 0)
+            route_report = (result.payload or {}).get("route_report")
+            if reply_to and route_report is not None:
+                queued = sum(route_report.queued.values())
+                created = len(route_report.created)
+                await self.edit_message_by_id(reply_to, panel("自动收纳扫描完成", [section("执行结果", [bullet("新建分组", created), bullet("排队补群", queued), bullet("空结果规则", len(route_report.matched_zero)), bullet("错误数量", len(route_report.errors))])]))
             return
         if job.kind == "update_repo":
             reply_to = int(job.payload.get("reply_to") or 0)
@@ -527,8 +586,9 @@ class AdminApp:
             return
         try:
             await self.client.edit_message("me", msg_id, text)
-        except Exception:
-            pass
+        except Exception as exc:
+            self.logger.warning("edit_message_by_id failed: %s", exc)
+            self.db.log_event("ERROR", "COMMAND", f"edit_message failed: {exc}")
 
     async def apply_route_task(self, task: RouteTask) -> None:
         assert self.client is not None
@@ -634,7 +694,7 @@ class AdminApp:
 
         route_rows = [f"· <code>{escape(row['pattern'])}</code> → <code>{escape(row['folder_name'])}</code>" for row in self.db.list_routes()[:8]] or ["· <i>当前没有自动收纳规则。</i>"]
         target_map, valid_rules = self.db.build_target_map(self.config.global_alert_channel_id)
-        startup_card = panel("TG-Radar 已上线", [section("运行概况", [bullet("架构", "Plan C / Admin + Core / SQLite WAL"), bullet("版本", __version__), bullet("启动时间", self.started_at.strftime("%Y-%m-%d %H:%M:%S")), bullet("自动同步", f"每 {self.config.sync_interval_seconds} 秒"), bullet("热更新", "事件驱动 / 变更即触发")]), section("当前规模", [bullet("活跃分组", f"{len(enabled)} / {len(rows)}"), bullet("监听目标", f"{len(target_map)} 个群 / 频道"), bullet("生效规则", f"{valid_rules} 条")]), section("已启用分组", folder_rows), section("自动收纳规则", route_rows)], f"<i>在收藏夹发送 <code>{escape(self.config.cmd_prefix)}help</code> 可以打开完整管理面板。</i>")
+        startup_card = panel("TG-Radar 已上线", [section("运行概况", [bullet("架构", "Plan C / Admin + Core / SQLite WAL"), bullet("版本", __version__), bullet("启动时间", self.started_at.strftime("%Y-%m-%d %H:%M:%S")), bullet("自动同步", f"每日 {self.config.auto_sync_time}" if self.config.auto_sync_enabled else "已关闭", code=False), bullet("热更新", "事件驱动 / 变更即触发")]), section("当前规模", [bullet("活跃分组", f"{len(enabled)} / {len(rows)}"), bullet("监听目标", f"{len(target_map)} 个群 / 频道"), bullet("生效规则", f"{valid_rules} 条")]), section("已启用分组", folder_rows), section("自动收纳规则", route_rows)], f"<i>在收藏夹发送 <code>{escape(self.config.cmd_prefix)}help</code> 可以打开完整管理面板。</i>")
 
         last_msg_path = self.config.work_dir / ".last_msg"
         target = self.config.notify_channel_id if self.config.notify_channel_id is not None else "me"
@@ -681,7 +741,9 @@ class AdminApp:
         if msg is None:
             try:
                 msg = await event.reply(text)
-            except Exception:
+            except Exception as exc:
+                self.logger.warning("safe_reply failed: %s", exc)
+                self.db.log_event("ERROR", "COMMAND", f"safe_reply failed: {exc}")
                 return
 
         if msg and delete_after > 0:
@@ -692,6 +754,36 @@ class AdminApp:
                 asyncio.create_task(self.delete_later(event.message, self.config.recycle_fallback_command_seconds))
             except Exception:
                 pass
+
+    async def run_route_scan_command(self, event: events.NewMessage.Event) -> None:
+        result = self.command_bus.submit(
+            "route_scan",
+            payload={"reply_to": int(event.id)},
+            priority=12,
+            dedupe_key="route_scan",
+            origin="telegram",
+            visible=True,
+            delay_seconds=self.config.manual_heavy_delay_seconds + 2,
+        )
+        self.db.log_event("INFO", "JOB_QUEUE", "manual route_scan queued")
+        title = "自动收纳扫描已排队" if result.created else "自动收纳扫描已在后台等待"
+        await self.safe_reply(event, panel(title, [section("调度说明", ["· 前台已立即返回，不会阻塞其它命令", "· 系统会在空闲时段启动扫描", "· 若命中目标，会自动排入补群队列"])]), auto_delete=0)
+
+    def render_jobs_message(self) -> str:
+        rows = self.db.list_open_jobs(20)
+        if not rows:
+            return panel("后台任务队列", [section("当前状态", ["· <i>当前没有排队或执行中的后台任务。</i>"])])
+        blocks = []
+        for row in rows:
+            when = row["run_after"] or "立即"
+            blocks.append(
+                f"<b>{escape(row['kind'])}</b>\n"
+                f"· 状态：<code>{escape(row['status'])}</code>\n"
+                f"· 优先级：<code>{row['priority']}</code>\n"
+                f"· 计划执行：<code>{escape(when)}</code>\n"
+                f"· 更新时间：<code>{escape(row['updated_at'])}</code>"
+            )
+        return panel("后台任务队列", [section("排队 / 执行中", blocks)], "<i>重任务会延迟、合并、串行执行，以保证前台命令响应优先。</i>")
 
     def render_help_message(self) -> str:
         prefix = escape(self.config.cmd_prefix)
@@ -709,7 +801,8 @@ class AdminApp:
                     f"<code>{prefix}rules 分组名</code> · 查看分组规则",
                     f"<code>{prefix}enable 分组名</code> · 开启监控",
                     f"<code>{prefix}disable 分组名</code> · 关闭监控",
-                    f"<code>{prefix}addrule 分组 规则名 关键词...</code> · 新增规则",
+                    f"<code>{prefix}addrule 分组 规则名 关键词...</code> · 追加新词到同名规则",
+                    f"<code>{prefix}setrule 分组 规则名 表达式</code> · 直接覆盖整条规则",
                     f"<code>{prefix}delrule 分组 规则名</code> · 删除整条规则",
                     f"<code>{prefix}delrule 分组 规则名 关键词...</code> · 仅删除规则里的部分词",
                 ]),
@@ -719,19 +812,21 @@ class AdminApp:
                     f"<code>{prefix}delroute 分组</code> · 删除收纳规则",
                 ]),
                 section("系统维护", [
-                    f"<code>{prefix}sync</code> · 立即执行一次同步",
+                    f"<code>{prefix}sync</code> · 手动执行一次同步",
                     f"<code>{prefix}config</code> · 查看关键配置",
                     f"<code>{prefix}version</code> · 查看版本信息",
                     f"<code>{prefix}setnotify ID/off</code> · 设置系统通知目标",
                     f"<code>{prefix}setalert ID/off</code> · 设置默认告警目标",
                     f"<code>{prefix}setprefix 新前缀</code> · 修改命令前缀",
+                    f"<code>{prefix}routescan</code> · 手动执行一次自动收纳扫描",
+                    f"<code>{prefix}jobs</code> · 查看后台任务队列",
                     f"<code>{prefix}update</code> · 拉取代码并重启",
                     f"<code>{prefix}restart</code> · 直接重启双服务",
                 ]),
                 section("规则输入说明", [
-                    "· 多个普通词会自动合并为 OR 规则",
+                    "· 空格、英文逗号、中文逗号都会被识别为分隔符",
                     "· 单个正则表达式会按原样使用",
-                    "· 普通词和正则片段可以混合输入",
+                    "· 同名规则默认追加，不会直接覆盖旧词",
                     "· 分组名、规则名、短语关键词如包含空格，请用引号包起来",
                 ]),
                 section("消息策略", [
@@ -756,12 +851,13 @@ class AdminApp:
                     bullet("命令前缀", self.config.cmd_prefix),
                 ]),
                 section("运行策略", [
-                    bullet("自动同步", f"{self.config.sync_interval_seconds} 秒"),
+                    bullet("运行模式", self.config.operation_mode),
+                    bullet("自动同步", f"每日 {self.config.auto_sync_time}" if self.config.auto_sync_enabled else "已关闭", code=False),
+                    bullet("自动收纳", f"每日 {self.config.auto_route_time}" if self.config.auto_route_enabled else "已关闭", code=False),
                     bullet("热更新", "事件驱动"),
-                    bullet("路由节流", f"{self.config.route_worker_interval_seconds} 秒"),
                     bullet("临时面板回收", f"{self.config.panel_auto_delete_seconds} 秒"),
                     bullet("系统通知保留", "默认保留，不自动回收", code=False),
-                    bullet("命令回执策略", "优先编辑原消息，长任务先回执后后台执行", code=False),
+                    bullet("命令回执策略", "优先编辑原消息，重任务延迟排队", code=False),
                 ]),
                 section("部署信息", [
                     bullet("服务前缀", self.config.service_name_prefix),
@@ -791,7 +887,7 @@ class AdminApp:
         if not active_rows:
             active_rows = ["· <i>暂无启用分组。</i>"]
         q_info = f"{queue_size} 个任务待处理" if queue_size > 0 else "空闲"
-        return panel("TG-Radar 详细状态", [section("运行状态", [bullet("系统状态", "稳定运行中", code=False), bullet("持续运行", format_duration((datetime.now() - self.started_at).total_seconds())), bullet("自动同步", f"{self.config.sync_interval_seconds} 秒"), bullet("热更新", "事件驱动"), bullet("路由队列", q_info, code=False), bullet("交互策略", "优先回执命令，再后台执行重任务", code=False)]), section("监控规模", [bullet("活跃分组", f"{enabled_cnt} / {len(rows)}"), bullet("监听目标", f"{len(target_map)} 个群 / 频道"), bullet("生效规则", f"{valid_rules} 条"), bullet("自动收纳规则", f"{len(self.db.list_routes())} 条")]), section("历史统计", [bullet("总计命中", stats.get("total_hits", "0")), bullet("最近命中分组", last_folder), bullet("最近命中时间", last_time)]), section("已启用分组", active_rows)])
+        return panel("TG-Radar 详细状态", [section("运行状态", [bullet("系统状态", "稳定运行中", code=False), bullet("持续运行", format_duration((datetime.now() - self.started_at).total_seconds())), bullet("运行模式", self.config.operation_mode), bullet("自动同步", f"每日 {self.config.auto_sync_time}" if self.config.auto_sync_enabled else "已关闭", code=False), bullet("自动收纳", f"每日 {self.config.auto_route_time}" if self.config.auto_route_enabled else "已关闭", code=False), bullet("热更新", "事件驱动"), bullet("路由队列", q_info, code=False), bullet("交互策略", "优先回执命令，再延迟执行重任务", code=False)]), section("监控规模", [bullet("活跃分组", f"{enabled_cnt} / {len(rows)}"), bullet("监听目标", f"{len(target_map)} 个群 / 频道"), bullet("生效规则", f"{valid_rules} 条"), bullet("自动收纳规则", f"{len(self.db.list_routes())} 条")]), section("历史统计", [bullet("总计命中", stats.get("total_hits", "0")), bullet("最近命中分组", last_folder), bullet("最近命中时间", last_time)]), section("已启用分组", active_rows)])
 
     def render_sync_message(self, sync_report: SyncReport, route_report: RouteReport) -> str:
         folder_rows: list[str] = []

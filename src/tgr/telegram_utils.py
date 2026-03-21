@@ -7,6 +7,7 @@ from typing import Iterable, Sequence
 from telethon import types, utils
 
 REGEX_HINT_RE = re.compile(r"[\\()\[\]{}|.+?^$]")
+SPLIT_COMMAS_RE = re.compile(r"[,，]+")
 
 
 def escape(value: object) -> str:
@@ -63,6 +64,23 @@ def _token_is_regex(token: str) -> bool:
     return bool(REGEX_HINT_RE.search(token))
 
 
+def split_terms(raw: str | Sequence[str]) -> list[str]:
+    if isinstance(raw, str):
+        source = [p.strip() for p in raw.split() if p.strip()]
+    else:
+        source = [str(p).strip() for p in raw if str(p).strip()]
+    parts: list[str] = []
+    for item in source:
+        if not item:
+            continue
+        if _token_is_regex(item):
+            parts.append(item)
+            continue
+        pieces = [x.strip() for x in SPLIT_COMMAS_RE.split(item) if x.strip()]
+        parts.extend(pieces or [item])
+    return parts
+
+
 def _normalize_token(token: str) -> str:
     token = token.strip()
     if not token:
@@ -71,22 +89,33 @@ def _normalize_token(token: str) -> str:
 
 
 def normalize_pattern_from_terms(raw: str | Sequence[str]) -> str:
-    if isinstance(raw, str):
-        parts = [p.strip() for p in raw.split() if p.strip()]
-    else:
-        parts = [str(p).strip() for p in raw if str(p).strip()]
+    parts = split_terms(raw)
     if not parts:
         raise ValueError("empty terms")
-    normalized: list[str] = []
-    for part in parts:
-        token = _normalize_token(part)
-        if token:
-            normalized.append(token)
+    normalized = [x for x in (_normalize_token(part) for part in parts) if x]
     if not normalized:
         raise ValueError("empty pattern")
+    normalized = list(dict.fromkeys(normalized))
     if len(normalized) == 1:
         return normalized[0]
     return "(" + "|".join(normalized) + ")"
+
+
+def merge_patterns(existing: str | None, incoming: str) -> str:
+    existing = (existing or "").strip()
+    incoming = (incoming or "").strip()
+    if not existing:
+        return incoming
+    if existing == incoming:
+        return existing
+    old_inner = existing[1:-1] if existing.startswith("(") and existing.endswith(")") else existing
+    new_inner = incoming[1:-1] if incoming.startswith("(") and incoming.endswith(")") else incoming
+    tokens = [t.strip() for t in re.split(r"(?<!\\)\|", old_inner) if t.strip()]
+    tokens.extend(t.strip() for t in re.split(r"(?<!\\)\|", new_inner) if t.strip())
+    tokens = list(dict.fromkeys(tokens))
+    if len(tokens) == 1:
+        return tokens[0]
+    return "(" + "|".join(tokens) + ")"
 
 
 def try_remove_terms_from_pattern(pattern: str, terms: Iterable[str]) -> str | None:
@@ -95,7 +124,7 @@ def try_remove_terms_from_pattern(pattern: str, terms: Iterable[str]) -> str | N
         return None
     inner = pattern[1:-1] if pattern.startswith("(") and pattern.endswith(")") else pattern
     tokens = [t.strip() for t in re.split(r"(?<!\\)\|", inner) if t.strip()]
-    cleaned = {str(t).strip() for t in terms if str(t).strip()}
+    cleaned = set(split_terms(list(terms)))
     escaped = {re.escape(x) for x in cleaned}
     left = [token for token in tokens if token not in cleaned and token not in escaped and html.unescape(token) not in cleaned]
     if not left:

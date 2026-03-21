@@ -6,28 +6,102 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_CONFIG: dict[str, Any] = {
+PUBLIC_DEFAULT_CONFIG: dict[str, Any] = {
     "api_id": 1234567,
     "api_hash": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     "global_alert_channel_id": None,
     "notify_channel_id": None,
     "cmd_prefix": "-",
     "service_name_prefix": "tg-radar",
-    "sync_interval_seconds": 1800,
-    "route_worker_interval_seconds": 4,
-    "revision_poll_seconds": 0,
+    "operation_mode": "stable",
+    "auto_sync_enabled": True,
+    "auto_sync_time": "03:40",
+    "auto_route_enabled": True,
+    "auto_route_time": "04:20",
     "panel_auto_delete_seconds": 45,
     "notify_auto_delete_seconds": 0,
     "recycle_fallback_command_seconds": 8,
     "repo_url": "https://github.com/chenmo8848/TG-Radar.git",
-    "scheduler_poll_seconds": 1,
-    "snapshot_flush_debounce_seconds": 3,
-    "max_parallel_admin_jobs": 2,
-    "route_scan_interval_seconds": 120,
-    "sync_auto_jitter_seconds": 8,
     "auto_route_rules": {},
     "folder_rules": {},
     "_system_cache": {},
+}
+
+MODE_INTERNALS: dict[str, dict[str, Any]] = {
+    "stable": {
+        "scheduler_poll_seconds": 1,
+        "snapshot_flush_debounce_seconds": 10,
+        "reload_debounce_seconds": 1.2,
+        "manual_heavy_delay_seconds": 4,
+        "restart_delay_seconds": 2,
+        "update_delay_seconds": 3,
+        "route_apply_delay_seconds": 2,
+        "max_parallel_admin_jobs": 1,
+        "idle_grace_seconds": 45,
+        "daily_jitter_minutes": 15,
+        "route_batch_size": 30,
+        "sync_batch_size": 80,
+        "batch_sleep_min_seconds": 0.5,
+        "batch_sleep_max_seconds": 1.5,
+        "revision_poll_seconds": 0,
+    },
+    "balanced": {
+        "scheduler_poll_seconds": 1,
+        "snapshot_flush_debounce_seconds": 6,
+        "reload_debounce_seconds": 0.8,
+        "manual_heavy_delay_seconds": 2,
+        "restart_delay_seconds": 1.5,
+        "update_delay_seconds": 2,
+        "route_apply_delay_seconds": 1,
+        "max_parallel_admin_jobs": 1,
+        "idle_grace_seconds": 20,
+        "daily_jitter_minutes": 8,
+        "route_batch_size": 45,
+        "sync_batch_size": 120,
+        "batch_sleep_min_seconds": 0.25,
+        "batch_sleep_max_seconds": 0.9,
+        "revision_poll_seconds": 0,
+    },
+    "aggressive": {
+        "scheduler_poll_seconds": 1,
+        "snapshot_flush_debounce_seconds": 3,
+        "reload_debounce_seconds": 0.4,
+        "manual_heavy_delay_seconds": 1,
+        "restart_delay_seconds": 1,
+        "update_delay_seconds": 1,
+        "route_apply_delay_seconds": 0.5,
+        "max_parallel_admin_jobs": 1,
+        "idle_grace_seconds": 10,
+        "daily_jitter_minutes": 3,
+        "route_batch_size": 60,
+        "sync_batch_size": 180,
+        "batch_sleep_min_seconds": 0.1,
+        "batch_sleep_max_seconds": 0.5,
+        "revision_poll_seconds": 0,
+    },
+}
+
+LEGACY_KEYS_TO_DROP = {
+    "scheduler_poll_seconds",
+    "snapshot_flush_debounce_seconds",
+    "reload_debounce_seconds",
+    "manual_heavy_delay_seconds",
+    "restart_delay_seconds",
+    "update_delay_seconds",
+    "route_apply_delay_seconds",
+    "max_parallel_admin_jobs",
+    "idle_grace_seconds",
+    "daily_jitter_minutes",
+    "route_batch_size",
+    "sync_batch_size",
+    "batch_sleep_min_seconds",
+    "batch_sleep_max_seconds",
+    "route_worker_interval_seconds",
+    "route_scan_interval_seconds",
+    "sync_interval_seconds",
+    "scheduler_mode",
+    "revision_poll_seconds",
+    "sync_auto_jitter_seconds",
 }
 
 
@@ -40,18 +114,32 @@ class AppConfig:
     notify_channel_id: int | None
     cmd_prefix: str
     service_name_prefix: str
-    sync_interval_seconds: int
-    route_worker_interval_seconds: int
-    revision_poll_seconds: int
+    operation_mode: str
+    auto_sync_enabled: bool
+    auto_sync_time: str
+    auto_route_enabled: bool
+    auto_route_time: str
     panel_auto_delete_seconds: int
     notify_auto_delete_seconds: int
     recycle_fallback_command_seconds: int
     repo_url: str | None
+
+    # hidden strategy values
     scheduler_poll_seconds: int
     snapshot_flush_debounce_seconds: int
+    reload_debounce_seconds: float
+    manual_heavy_delay_seconds: float
+    restart_delay_seconds: float
+    update_delay_seconds: float
+    route_apply_delay_seconds: float
     max_parallel_admin_jobs: int
-    route_scan_interval_seconds: int
-    sync_auto_jitter_seconds: int
+    idle_grace_seconds: int
+    daily_jitter_minutes: int
+    route_batch_size: int
+    sync_batch_size: int
+    batch_sleep_min_seconds: float
+    batch_sleep_max_seconds: float
+    revision_poll_seconds: int
 
     @property
     def runtime_dir(self) -> Path:
@@ -91,12 +179,45 @@ def _normalize_int(value: Any) -> int | None:
         return None
 
 
-def _normalize_positive_int(value: Any, default: int, minimum: int = 1) -> int:
+def _normalize_non_negative_int(value: Any, default: int) -> int:
     try:
         normalized = int(str(value).strip())
     except Exception:
         normalized = default
-    return max(minimum, normalized)
+    return max(0, normalized)
+
+
+def _normalize_bool(value: Any, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value in (None, ""):
+        return default
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
+
+
+def _normalize_mode(value: Any) -> str:
+    mode = str(value or "stable").strip().lower()
+    if mode not in MODE_INTERNALS:
+        return "stable"
+    return mode
+
+
+def _normalize_time_hhmm(value: Any, default: str) -> str:
+    raw = str(value or default).strip()
+    parts = raw.split(":", 1)
+    if len(parts) != 2:
+        return default
+    try:
+        hour = max(0, min(23, int(parts[0])))
+        minute = max(0, min(59, int(parts[1])))
+    except Exception:
+        return default
+    return f"{hour:02d}:{minute:02d}"
 
 
 def read_config_data(work_dir: Path) -> dict[str, Any]:
@@ -107,10 +228,13 @@ def read_config_data(work_dir: Path) -> dict[str, Any]:
     else:
         raw = {}
 
-    # 清理旧版写入的中文说明字段与伪注释字段。
-    raw = {k: v for k, v in raw.items() if not (k.startswith("_说明_") or k.startswith("_comment_"))}
+    raw = {
+        k: v
+        for k, v in raw.items()
+        if not (k.startswith("_说明_") or k.startswith("_comment_") or k in LEGACY_KEYS_TO_DROP)
+    }
 
-    data = dict(DEFAULT_CONFIG)
+    data = dict(PUBLIC_DEFAULT_CONFIG)
     data.update(raw)
     data["api_id"] = int(data.get("api_id") or 0)
     data["api_hash"] = str(data.get("api_hash") or "")
@@ -118,18 +242,15 @@ def read_config_data(work_dir: Path) -> dict[str, Any]:
     data["notify_channel_id"] = _normalize_int(data.get("notify_channel_id"))
     data["cmd_prefix"] = str(data.get("cmd_prefix") or "-")
     data["service_name_prefix"] = str(data.get("service_name_prefix") or "tg-radar")
-    data["sync_interval_seconds"] = _normalize_positive_int(data.get("sync_interval_seconds"), DEFAULT_CONFIG["sync_interval_seconds"], 10)
-    data["route_worker_interval_seconds"] = _normalize_positive_int(data.get("route_worker_interval_seconds"), DEFAULT_CONFIG["route_worker_interval_seconds"], 1)
-    data["revision_poll_seconds"] = _normalize_positive_int(data.get("revision_poll_seconds"), DEFAULT_CONFIG["revision_poll_seconds"], 0)
-    data["panel_auto_delete_seconds"] = _normalize_positive_int(data.get("panel_auto_delete_seconds"), DEFAULT_CONFIG["panel_auto_delete_seconds"], 0)
-    data["notify_auto_delete_seconds"] = _normalize_positive_int(data.get("notify_auto_delete_seconds"), DEFAULT_CONFIG["notify_auto_delete_seconds"], 0)
-    data["recycle_fallback_command_seconds"] = _normalize_positive_int(data.get("recycle_fallback_command_seconds"), DEFAULT_CONFIG["recycle_fallback_command_seconds"], 0)
-    data["repo_url"] = str(data.get("repo_url") or DEFAULT_CONFIG["repo_url"])
-    data["scheduler_poll_seconds"] = _normalize_positive_int(data.get("scheduler_poll_seconds"), DEFAULT_CONFIG["scheduler_poll_seconds"], 1)
-    data["snapshot_flush_debounce_seconds"] = _normalize_positive_int(data.get("snapshot_flush_debounce_seconds"), DEFAULT_CONFIG["snapshot_flush_debounce_seconds"], 1)
-    data["max_parallel_admin_jobs"] = _normalize_positive_int(data.get("max_parallel_admin_jobs"), DEFAULT_CONFIG["max_parallel_admin_jobs"], 1)
-    data["route_scan_interval_seconds"] = _normalize_positive_int(data.get("route_scan_interval_seconds"), DEFAULT_CONFIG["route_scan_interval_seconds"], 10)
-    data["sync_auto_jitter_seconds"] = _normalize_positive_int(data.get("sync_auto_jitter_seconds"), DEFAULT_CONFIG["sync_auto_jitter_seconds"], 0)
+    data["operation_mode"] = _normalize_mode(data.get("operation_mode"))
+    data["auto_sync_enabled"] = _normalize_bool(data.get("auto_sync_enabled"), True)
+    data["auto_route_enabled"] = _normalize_bool(data.get("auto_route_enabled"), True)
+    data["auto_sync_time"] = _normalize_time_hhmm(data.get("auto_sync_time"), PUBLIC_DEFAULT_CONFIG["auto_sync_time"])
+    data["auto_route_time"] = _normalize_time_hhmm(data.get("auto_route_time"), PUBLIC_DEFAULT_CONFIG["auto_route_time"])
+    data["panel_auto_delete_seconds"] = _normalize_non_negative_int(data.get("panel_auto_delete_seconds"), PUBLIC_DEFAULT_CONFIG["panel_auto_delete_seconds"])
+    data["notify_auto_delete_seconds"] = _normalize_non_negative_int(data.get("notify_auto_delete_seconds"), PUBLIC_DEFAULT_CONFIG["notify_auto_delete_seconds"])
+    data["recycle_fallback_command_seconds"] = _normalize_non_negative_int(data.get("recycle_fallback_command_seconds"), PUBLIC_DEFAULT_CONFIG["recycle_fallback_command_seconds"])
+    data["repo_url"] = str(data.get("repo_url") or PUBLIC_DEFAULT_CONFIG["repo_url"])
     data["auto_route_rules"] = data.get("auto_route_rules") or {}
     data["folder_rules"] = data.get("folder_rules") or {}
     data["_system_cache"] = data.get("_system_cache") or {}
@@ -138,9 +259,9 @@ def read_config_data(work_dir: Path) -> dict[str, Any]:
 
 def save_config_data(work_dir: Path, data: dict[str, Any]) -> Path:
     config_path = work_dir / "config.json"
-    normalized = dict(DEFAULT_CONFIG)
+    normalized = dict(PUBLIC_DEFAULT_CONFIG)
     normalized.update(data)
-    payload = {k: normalized[k] for k in DEFAULT_CONFIG.keys()}
+    payload = {k: normalized[k] for k in PUBLIC_DEFAULT_CONFIG.keys()}
     tmp = config_path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=4) + "\n", encoding="utf-8")
     tmp.replace(config_path)
@@ -160,6 +281,9 @@ def load_config(work_dir: Path) -> AppConfig:
     if not api_id or api_id == 1234567 or not api_hash or api_hash == "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx":
         raise ValueError("config.json does not contain valid Telegram API credentials")
 
+    mode = _normalize_mode(data.get("operation_mode"))
+    internal = dict(MODE_INTERNALS[mode])
+
     cfg = AppConfig(
         work_dir=work_dir,
         api_id=api_id,
@@ -168,18 +292,30 @@ def load_config(work_dir: Path) -> AppConfig:
         notify_channel_id=data.get("notify_channel_id"),
         cmd_prefix=str(data.get("cmd_prefix") or "-"),
         service_name_prefix=str(data.get("service_name_prefix") or "tg-radar"),
-        sync_interval_seconds=_normalize_positive_int(data.get("sync_interval_seconds"), DEFAULT_CONFIG["sync_interval_seconds"], 10),
-        route_worker_interval_seconds=_normalize_positive_int(data.get("route_worker_interval_seconds"), DEFAULT_CONFIG["route_worker_interval_seconds"], 1),
-        revision_poll_seconds=_normalize_positive_int(data.get("revision_poll_seconds"), DEFAULT_CONFIG["revision_poll_seconds"], 0),
-        panel_auto_delete_seconds=_normalize_positive_int(data.get("panel_auto_delete_seconds"), DEFAULT_CONFIG["panel_auto_delete_seconds"], 0),
-        notify_auto_delete_seconds=_normalize_positive_int(data.get("notify_auto_delete_seconds"), DEFAULT_CONFIG["notify_auto_delete_seconds"], 0),
-        recycle_fallback_command_seconds=_normalize_positive_int(data.get("recycle_fallback_command_seconds"), DEFAULT_CONFIG["recycle_fallback_command_seconds"], 0),
+        operation_mode=mode,
+        auto_sync_enabled=_normalize_bool(data.get("auto_sync_enabled"), True),
+        auto_sync_time=_normalize_time_hhmm(data.get("auto_sync_time"), PUBLIC_DEFAULT_CONFIG["auto_sync_time"]),
+        auto_route_enabled=_normalize_bool(data.get("auto_route_enabled"), True),
+        auto_route_time=_normalize_time_hhmm(data.get("auto_route_time"), PUBLIC_DEFAULT_CONFIG["auto_route_time"]),
+        panel_auto_delete_seconds=_normalize_non_negative_int(data.get("panel_auto_delete_seconds"), PUBLIC_DEFAULT_CONFIG["panel_auto_delete_seconds"]),
+        notify_auto_delete_seconds=_normalize_non_negative_int(data.get("notify_auto_delete_seconds"), PUBLIC_DEFAULT_CONFIG["notify_auto_delete_seconds"]),
+        recycle_fallback_command_seconds=_normalize_non_negative_int(data.get("recycle_fallback_command_seconds"), PUBLIC_DEFAULT_CONFIG["recycle_fallback_command_seconds"]),
         repo_url=data.get("repo_url") or None,
-        scheduler_poll_seconds=_normalize_positive_int(data.get("scheduler_poll_seconds"), DEFAULT_CONFIG["scheduler_poll_seconds"], 1),
-        snapshot_flush_debounce_seconds=_normalize_positive_int(data.get("snapshot_flush_debounce_seconds"), DEFAULT_CONFIG["snapshot_flush_debounce_seconds"], 1),
-        max_parallel_admin_jobs=_normalize_positive_int(data.get("max_parallel_admin_jobs"), DEFAULT_CONFIG["max_parallel_admin_jobs"], 1),
-        route_scan_interval_seconds=_normalize_positive_int(data.get("route_scan_interval_seconds"), DEFAULT_CONFIG["route_scan_interval_seconds"], 10),
-        sync_auto_jitter_seconds=_normalize_positive_int(data.get("sync_auto_jitter_seconds"), DEFAULT_CONFIG["sync_auto_jitter_seconds"], 0),
+        scheduler_poll_seconds=int(internal["scheduler_poll_seconds"]),
+        snapshot_flush_debounce_seconds=int(internal["snapshot_flush_debounce_seconds"]),
+        reload_debounce_seconds=float(internal["reload_debounce_seconds"]),
+        manual_heavy_delay_seconds=float(internal["manual_heavy_delay_seconds"]),
+        restart_delay_seconds=float(internal["restart_delay_seconds"]),
+        update_delay_seconds=float(internal["update_delay_seconds"]),
+        route_apply_delay_seconds=float(internal["route_apply_delay_seconds"]),
+        max_parallel_admin_jobs=int(internal["max_parallel_admin_jobs"]),
+        idle_grace_seconds=int(internal["idle_grace_seconds"]),
+        daily_jitter_minutes=int(internal["daily_jitter_minutes"]),
+        route_batch_size=int(internal["route_batch_size"]),
+        sync_batch_size=int(internal["sync_batch_size"]),
+        batch_sleep_min_seconds=float(internal["batch_sleep_min_seconds"]),
+        batch_sleep_max_seconds=float(internal["batch_sleep_max_seconds"]),
+        revision_poll_seconds=int(internal["revision_poll_seconds"]),
     )
     cfg.runtime_dir.mkdir(parents=True, exist_ok=True)
     cfg.logs_dir.mkdir(parents=True, exist_ok=True)

@@ -180,14 +180,54 @@ except Exception:
     print("tg-radar")
 PY
 )"
-current_sync_interval="$($PY - <<PY
+current_mode="$($PY - <<PY
 import json, pathlib
 p=pathlib.Path(r"$APP_DIR")/"config.json"
 try:
     d=json.loads(p.read_text(encoding="utf-8"))
-    print(d.get("sync_interval_seconds") or 60)
+    print(d.get("operation_mode") or "stable")
 except Exception:
-    print(60)
+    print("stable")
+PY
+)"
+current_auto_sync_enabled="$($PY - <<PY
+import json, pathlib
+p=pathlib.Path(r"$APP_DIR")/"config.json"
+try:
+    d=json.loads(p.read_text(encoding="utf-8"))
+    print("true" if d.get("auto_sync_enabled", True) else "false")
+except Exception:
+    print("true")
+PY
+)"
+current_auto_sync_time="$($PY - <<PY
+import json, pathlib
+p=pathlib.Path(r"$APP_DIR")/"config.json"
+try:
+    d=json.loads(p.read_text(encoding="utf-8"))
+    print(d.get("auto_sync_time") or "03:40")
+except Exception:
+    print("03:40")
+PY
+)"
+current_auto_route_enabled="$($PY - <<PY
+import json, pathlib
+p=pathlib.Path(r"$APP_DIR")/"config.json"
+try:
+    d=json.loads(p.read_text(encoding="utf-8"))
+    print("true" if d.get("auto_route_enabled", True) else "false")
+except Exception:
+    print("true")
+PY
+)"
+current_auto_route_time="$($PY - <<PY
+import json, pathlib
+p=pathlib.Path(r"$APP_DIR")/"config.json"
+try:
+    d=json.loads(p.read_text(encoding="utf-8"))
+    print(d.get("auto_route_time") or "04:20")
+except Exception:
+    print("04:20")
 PY
 )"
 current_repo_url="$($PY - <<PY
@@ -204,8 +244,8 @@ PY
 echo
 printf "%b\n" "${B}TG-Radar 配置向导${C0}"
 line
-echo "这一步会直接生成 / 更新 config.json，不需要你手动打开文件编辑。"
-echo "Telegram API 凭据来自 my.telegram.org。"
+echo "这一步会直接生成 / 更新 config.json，不需要手动编辑。"
+echo "真正复杂的调度策略会由系统根据运行模式自动决定。"
 echo
 
 while true; do
@@ -247,11 +287,20 @@ read_tty service_name_prefix "systemd 服务名前缀 [${current_service_prefix:
 service_name_prefix="${service_name_prefix:-${current_service_prefix:-tg-radar}}"
 
 while true; do
-  read_tty sync_interval_seconds "自动同步轮询秒数 [${current_sync_interval:-60}]: "
-  sync_interval_seconds="${sync_interval_seconds:-${current_sync_interval:-60}}"
-  [[ "$sync_interval_seconds" =~ ^[0-9]+$ ]] && [ "$sync_interval_seconds" -ge 10 ] && break
-  warn "请输入不小于 10 的数字。"
+  read_tty operation_mode "运行模式 [${current_mode:-stable}]（stable / balanced / aggressive）: "
+  operation_mode="${operation_mode:-${current_mode:-stable}}"
+  case "${operation_mode,,}" in stable|balanced|aggressive) break ;; esac
+  warn "请输入 stable、balanced 或 aggressive。"
 done
+
+read_tty auto_sync_enabled "是否启用每日自动同步 [${current_auto_sync_enabled:-true}]（true / false）: "
+auto_sync_enabled="${auto_sync_enabled:-${current_auto_sync_enabled:-true}}"
+read_tty auto_sync_time "每日自动同步时间 [${current_auto_sync_time:-03:40}]（HH:MM）: "
+auto_sync_time="${auto_sync_time:-${current_auto_sync_time:-03:40}}"
+read_tty auto_route_enabled "是否启用每日自动收纳扫描 [${current_auto_route_enabled:-true}]（true / false）: "
+auto_route_enabled="${auto_route_enabled:-${current_auto_route_enabled:-true}}"
+read_tty auto_route_time "每日自动收纳扫描时间 [${current_auto_route_time:-04:20}]（HH:MM）: "
+auto_route_time="${auto_route_time:-${current_auto_route_time:-04:20}}"
 
 read_tty repo_url "仓库地址 [${current_repo_url:-$REPO_URL_DEFAULT}]: "
 repo_url="${repo_url:-${current_repo_url:-$REPO_URL_DEFAULT}}"
@@ -267,6 +316,10 @@ def norm_int(v):
         return None
     return int(v)
 
+def norm_bool(v, default=True):
+    raw = str(v or default).strip().lower()
+    return raw in {"1", "true", "yes", "y", "on"}
+
 raw = {}
 if config_path.exists():
     try:
@@ -274,16 +327,18 @@ if config_path.exists():
     except Exception:
         raw = {}
 
-data = {
+payload = {
     "api_id": int(r"$api_id"),
     "api_hash": r"$api_hash",
     "global_alert_channel_id": norm_int(r"$global_alert_channel_id"),
     "notify_channel_id": norm_int(r"$notify_channel_id"),
     "cmd_prefix": r"$cmd_prefix",
     "service_name_prefix": r"$service_name_prefix",
-    "sync_interval_seconds": int(r"$sync_interval_seconds"),
-    "route_worker_interval_seconds": int(raw.get("route_worker_interval_seconds") or 4),
-    "revision_poll_seconds": int(raw.get("revision_poll_seconds") or 3),
+    "operation_mode": r"$operation_mode",
+    "auto_sync_enabled": norm_bool(r"$auto_sync_enabled", True),
+    "auto_sync_time": r"$auto_sync_time",
+    "auto_route_enabled": norm_bool(r"$auto_route_enabled", True),
+    "auto_route_time": r"$auto_route_time",
     "panel_auto_delete_seconds": int(raw.get("panel_auto_delete_seconds") or 45),
     "notify_auto_delete_seconds": int(raw.get("notify_auto_delete_seconds") or 0),
     "recycle_fallback_command_seconds": int(raw.get("recycle_fallback_command_seconds") or 8),
@@ -291,31 +346,6 @@ data = {
     "auto_route_rules": raw.get("auto_route_rules") or {},
     "folder_rules": raw.get("folder_rules") or {},
     "_system_cache": raw.get("_system_cache") or {},
-}
-
-payload = {
-    "_说明_1": "👇【Telegram API 凭据】前往 my.telegram.org 获取。任何情况下都不要泄露。",
-    "api_id": data["api_id"],
-    "api_hash": data["api_hash"],
-    "_说明_2": "👇【告警与通知】global_alert 是默认告警频道；notify 是系统通知频道。留空时默认发往 Saved Messages。",
-    "global_alert_channel_id": data["global_alert_channel_id"],
-    "notify_channel_id": data["notify_channel_id"],
-    "_说明_3": "👇【Telegram 控制台】cmd_prefix 是收藏夹命令前缀。默认减号 -，推荐保持 1-3 个字符。",
-    "cmd_prefix": data["cmd_prefix"],
-    "_说明_4": "👇【服务与轮询】sync_interval_seconds 是自动同步间隔；临时面板可按配置自动回收；关键词告警与系统通知默认长期保留。",
-    "service_name_prefix": data["service_name_prefix"],
-    "sync_interval_seconds": data["sync_interval_seconds"],
-    "route_worker_interval_seconds": data["route_worker_interval_seconds"],
-    "revision_poll_seconds": data["revision_poll_seconds"],
-    "panel_auto_delete_seconds": data["panel_auto_delete_seconds"],
-    "notify_auto_delete_seconds": data["notify_auto_delete_seconds"],
-    "recycle_fallback_command_seconds": data["recycle_fallback_command_seconds"],
-    "repo_url": data["repo_url"],
-    "_说明_5": "👇【自动收纳规则】推荐通过 Telegram 命令维护，例如 -addroute / -delroute。",
-    "auto_route_rules": data["auto_route_rules"],
-    "_说明_6": "👇【系统生成区域】运行后会自动回写分组规则与缓存，不建议直接人工修改。",
-    "folder_rules": data["folder_rules"],
-    "_system_cache": data["_system_cache"],
 }
 
 tmp = config_path.with_suffix('.json.tmp')

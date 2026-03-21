@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import random
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from telethon import TelegramClient, functions, types, utils
 
@@ -29,10 +32,26 @@ class RouteReport:
     errors: dict[str, str]
 
 
-DEFAULT_DEMO_PATTERN = "(关键词A|关键词B)"
+async def _small_pause(config: Any) -> None:
+    await asyncio.sleep(random.uniform(config.batch_sleep_min_seconds, config.batch_sleep_max_seconds))
 
 
-async def sync_dialog_folders(client: TelegramClient, db: RadarDB) -> SyncReport:
+async def _load_group_dialogs(client: TelegramClient, config: Any) -> tuple[list[Any], dict[int, Any]]:
+    dialogs: list[Any] = []
+    by_id: dict[int, Any] = {}
+    count = 0
+    async for dialog in client.iter_dialogs(ignore_pinned=True):
+        if not (dialog.is_group or dialog.is_channel):
+            continue
+        dialogs.append(dialog)
+        by_id[int(dialog.id)] = dialog
+        count += 1
+        if count % max(20, int(config.sync_batch_size)) == 0:
+            await _small_pause(config)
+    return dialogs, by_id
+
+
+async def sync_dialog_folders(client: TelegramClient, db: RadarDB, config: Any) -> SyncReport:
     started = datetime.now()
     discovered: list[str] = []
     renamed: list[tuple[str, str]] = []
@@ -42,8 +61,7 @@ async def sync_dialog_folders(client: TelegramClient, db: RadarDB) -> SyncReport
 
     result = await client(functions.messages.GetDialogFiltersRequest())
     tg_folders = [f for f in getattr(result, "filters", []) if isinstance(f, types.DialogFilter)]
-    all_dialogs = await client.get_dialogs(limit=None)
-    all_dialog_by_id = {int(d.id): d for d in all_dialogs if d.is_group or d.is_channel}
+    all_dialogs, all_dialog_by_id = await _load_group_dialogs(client, config)
 
     db_folders = db.list_folders()
     id_to_name = {row["folder_id"]: row["folder_name"] for row in db_folders if row["folder_id"] is not None}
@@ -51,7 +69,7 @@ async def sync_dialog_folders(client: TelegramClient, db: RadarDB) -> SyncReport
     current_ids: set[int] = set()
 
     with db.tx() as conn:
-        for folder in tg_folders:
+        for index, folder in enumerate(tg_folders, start=1):
             folder_id = int(folder.id)
             title = dialog_filter_title(folder)
             current_ids.add(folder_id)
@@ -63,7 +81,6 @@ async def sync_dialog_folders(client: TelegramClient, db: RadarDB) -> SyncReport
                 changed = True
             elif title not in existing_names:
                 db.upsert_folder(title, folder_id, enabled=False, alert_channel_id=None, conn=conn)
-                db.upsert_rule(title, f"{title}监控", DEFAULT_DEMO_PATTERN, conn=conn)
                 discovered.append(title)
                 changed = True
             else:
@@ -107,6 +124,9 @@ async def sync_dialog_folders(client: TelegramClient, db: RadarDB) -> SyncReport
                 changed = True
             db.replace_folder_cache(title, items, conn=conn)
             active[title] = len(items)
+            if index % 3 == 0:
+                # 给 client/API 留一点喘息空间
+                pass
 
         for row in db_folders:
             folder_id = row["folder_id"]
@@ -128,7 +148,7 @@ async def sync_dialog_folders(client: TelegramClient, db: RadarDB) -> SyncReport
     )
 
 
-async def scan_auto_routes(client: TelegramClient, db: RadarDB) -> RouteReport:
+async def scan_auto_routes(client: TelegramClient, db: RadarDB, config: Any) -> RouteReport:
     report = RouteReport(created=[], queued={}, matched_zero=[], already_in={}, errors={})
     routes = db.list_routes()
     if not routes:
@@ -140,11 +160,15 @@ async def scan_auto_routes(client: TelegramClient, db: RadarDB) -> RouteReport:
     used_ids = {int(f.id) for f in folders}
 
     all_dialogs = []
-    async for d in client.iter_dialogs():
+    count = 0
+    async for d in client.iter_dialogs(ignore_pinned=True):
         if not (d.is_group or d.is_channel):
             continue
         name = utils.get_display_name(d.entity) or getattr(d, "name", "") or getattr(d, "title", "") or ""
         all_dialogs.append({"id": int(d.id), "name": name})
+        count += 1
+        if count % max(10, int(config.route_batch_size)) == 0:
+            await _small_pause(config)
 
     for row in routes:
         folder_name = str(row["folder_name"])
@@ -194,5 +218,6 @@ async def scan_auto_routes(client: TelegramClient, db: RadarDB) -> RouteReport:
             continue
         db.upsert_route_task(folder_name, folder_id, to_add)
         report.queued[folder_name] = len(to_add)
+        await _small_pause(config)
 
     return report
