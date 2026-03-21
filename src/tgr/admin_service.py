@@ -148,7 +148,7 @@ class AdminApp:
                 return
             text = (event.raw_text or "").strip()
             if not text or not text.startswith(self.config.cmd_prefix):
-                await self.plugin_manager.process_core_message(self, event)
+                self.spawn_task(self.plugin_manager.process_core_message(self, event))
                 return
             self.db.log_event("INFO", "CMD_SEEN", text[:200])
             m = re.match(rf"^{re.escape(self.config.cmd_prefix)}(\w+)[ \t]*([\s\S]*)", text, re.IGNORECASE)
