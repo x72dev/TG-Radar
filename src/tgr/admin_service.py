@@ -153,7 +153,7 @@ class AdminApp:
     # ── 命令分发 ──
 
     def _register_handler(self, client: TelegramClient) -> None:
-        @client.on(events.NewMessage(incoming=True, outgoing=True))
+        @client.on(events.NewMessage(chats=self.self_id, incoming=True, outgoing=True))
         async def on_message(event) -> None:
             if not event.is_private:
                 return
