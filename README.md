@@ -8,7 +8,7 @@
 
 <br/>
 
-[![Version](https://img.shields.io/badge/v6.0-58a6ff?style=flat-square&label=version)](https://github.com/chenmo8848/TG-Radar)&nbsp;
+[![Version](https://img.shields.io/badge/v7.0-58a6ff?style=flat-square&label=version)](https://github.com/chenmo8848/TG-Radar)&nbsp;
 [![Python](https://img.shields.io/badge/3.10+-3776AB?style=flat-square&logo=python&logoColor=white&label=python)](https://python.org)&nbsp;
 [![Telethon](https://img.shields.io/badge/async-26A5E4?style=flat-square&logo=telegram&logoColor=white&label=telethon)](https://github.com/LonamiWebs/Telethon)&nbsp;
 [![License](https://img.shields.io/badge/MIT-3da639?style=flat-square&label=license)](LICENSE)
