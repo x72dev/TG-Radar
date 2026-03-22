@@ -45,6 +45,7 @@ class AdminApp:
         self.self_id: int | None = None
         self._last_snapshot_queued_at = 0.0
         self._startup_sync_note = ""
+        self._last_seen_msg_id: int = 0
         self.plugin_manager = PluginManager(self)
 
     def _notify_scheduler(self) -> None:
@@ -98,11 +99,18 @@ class AdminApp:
             self.plugin_manager.load_admin_plugins()
             self.plugin_manager.load_core_plugins()
             await self.plugin_manager.run_healthchecks()
-            self._register_handler(client)
             self.db.log_event("INFO", "ADMIN", f"Admin 已启动 v{__version__}")
             await self._bootstrap()
             sync_snapshot_to_config(self.config.work_dir, self.db)
             await self._send_startup()
+
+            # 记录启动时最新消息 ID，避免处理旧消息
+            try:
+                msgs = await client.get_messages("me", limit=1)
+                if msgs:
+                    self._last_seen_msg_id = msgs[0].id
+            except Exception:
+                pass
 
             loop = asyncio.get_running_loop()
             for sig in (signal.SIGINT, signal.SIGTERM):
@@ -111,20 +119,11 @@ class AdminApp:
                 except NotImplementedError:
                     pass
 
-            async def _keepalive():
-                while not self.stop_event.is_set():
-                    try:
-                        await asyncio.sleep(300)
-                        await client.get_me()
-                    except Exception:
-                        pass
-
             self.scheduler = AdminScheduler(self)
             tasks = [
                 asyncio.create_task(self.scheduler.run()),
-                asyncio.create_task(client.run_until_disconnected()),
+                asyncio.create_task(self._poll_saved_messages()),
                 asyncio.create_task(self.stop_event.wait()),
-                asyncio.create_task(_keepalive()),
             ]
             _, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             self.stop_event.set()
@@ -132,6 +131,78 @@ class AdminApp:
                 t.cancel()
             await asyncio.gather(*pending, return_exceptions=True)
             self.db.log_event("INFO", "ADMIN", "Admin 正在关闭")
+
+    # ── 主动轮询收藏夹（彻底解决双 session 更新流竞争）──
+
+    async def _poll_saved_messages(self) -> None:
+        """
+        不依赖 Telegram 推送更新，主动轮询收藏夹新消息。
+        这样无论 Core 进程怎么抢更新流，Admin 都能可靠收到命令。
+        """
+        self.logger.info("收藏夹轮询已启动，间隔 1.5s")
+        while not self.stop_event.is_set():
+            try:
+                await asyncio.sleep(1.5)
+                if not self.client or not self.client.is_connected():
+                    try:
+                        await self.client.connect()
+                    except Exception:
+                        continue
+
+                # 拉取比上次 ID 更新的消息
+                msgs = await self.client.get_messages("me", limit=5, min_id=self._last_seen_msg_id)
+                if not msgs:
+                    continue
+
+                # 按时间正序处理
+                for msg in reversed(msgs):
+                    if msg.id <= self._last_seen_msg_id:
+                        continue
+                    self._last_seen_msg_id = msg.id
+                    self.spawn_task(self._handle_message(msg))
+
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                self.logger.warning("轮询异常: %s", exc)
+                await asyncio.sleep(3)
+
+    async def _handle_message(self, msg) -> None:
+        """处理收藏夹中的一条消息（命令或转发）。"""
+        try:
+            text = (msg.raw_text or "").strip()
+
+            # 非命令消息（包括转发）交给插件钩子
+            if not text or not text.startswith(self.config.cmd_prefix):
+                await self.plugin_manager.process_core_message(self, msg)
+                return
+
+            self.db.log_event("INFO", "CMD_SEEN", text[:200])
+            m = re.match(rf"^{re.escape(self.config.cmd_prefix)}(\w+)[ \t]*([\s\S]*)", text, re.IGNORECASE)
+            if not m:
+                return
+            command, args = m.group(1).lower(), (m.group(2) or "").strip()
+            trace = datetime.now().strftime("cmd-%m%d-%H%M%S-%f")[:-3]
+            setattr(msg, "_tgr_trace", trace)
+            self.last_command_ts = time.monotonic()
+            self.db.log_event("INFO", "CMD_ACCEPTED", f"{trace} {command} {args[:160]}")
+            if self.plugin_manager.is_heavy_command(command):
+                try:
+                    await self.client.edit_message("me", msg.id, panel("TG-Radar · 任务已接收", [section("调度", [bullet("命令", command), bullet("跟踪号", trace, code=False)])]))
+                except Exception:
+                    pass
+
+            try:
+                ok = await self.plugin_manager.dispatch_admin_command(command, self, msg, args)
+                if not ok:
+                    await self.safe_reply(msg, panel("TG-Radar · 未知命令", [section("提示", [f"发送 <code>{escape(self.config.cmd_prefix)}help</code> 查看命令列表"])]))
+            except Exception as exc:
+                self.logger.exception("命令异常: %s", exc)
+                self.db.log_event("ERROR", "COMMAND", f"{trace} {exc}")
+                await self.safe_reply(msg, panel("TG-Radar · 命令异常", [section("错误", [blockquote_preview(str(exc), 500)]), section("跟踪", [bullet("ID", trace, code=False)])]), auto_delete=0)
+
+        except Exception as exc:
+            self.logger.exception("消息处理异常: %s", exc)
 
     async def _bootstrap(self) -> None:
         rows = self.db.list_folders()
@@ -150,48 +221,9 @@ class AdminApp:
             self._startup_sync_note = f"校准失败: {exc}"
             self.db.log_event("ERROR", "SYNC", str(exc))
 
-    # ── 命令分发 ──
-
-    def _register_handler(self, client: TelegramClient) -> None:
-        @client.on(events.NewMessage(chats=self.self_id, incoming=True, outgoing=True))
-        async def on_message(event) -> None:
-            if not event.is_private:
-                return
-            if int(getattr(event, "chat_id", 0) or 0) != self.self_id:
-                return
-            text = (event.raw_text or "").strip()
-            if not text or not text.startswith(self.config.cmd_prefix):
-                self.spawn_task(self.plugin_manager.process_core_message(self, event))
-                return
-            self.db.log_event("INFO", "CMD_SEEN", text[:200])
-            m = re.match(rf"^{re.escape(self.config.cmd_prefix)}(\w+)[ \t]*([\s\S]*)", text, re.IGNORECASE)
-            if not m:
-                return
-            command, args = m.group(1).lower(), (m.group(2) or "").strip()
-            trace = datetime.now().strftime("cmd-%m%d-%H%M%S-%f")[:-3]
-            setattr(event, "_tgr_trace", trace)
-            self.last_command_ts = time.monotonic()
-            self.db.log_event("INFO", "CMD_ACCEPTED", f"{trace} {command} {args[:160]}")
-            if self.plugin_manager.is_heavy_command(command):
-                try:
-                    await self.client.edit_message("me", event.id, panel("TG-Radar · 任务已接收", [section("调度", [bullet("命令", command), bullet("跟踪号", trace, code=False)])]))
-                except Exception:
-                    pass
-            async def _runner():
-                try:
-                    ok = await self.plugin_manager.dispatch_admin_command(command, self, event, args)
-                    if not ok:
-                        await self.safe_reply(event, panel("TG-Radar · 未知命令", [section("提示", [f"发送 <code>{escape(self.config.cmd_prefix)}help</code> 查看命令列表"])]))
-                except Exception as exc:
-                    self.logger.exception("命令异常: %s", exc)
-                    self.db.log_event("ERROR", "COMMAND", f"{trace} {exc}")
-                    await self.safe_reply(event, panel("TG-Radar · 命令异常", [section("错误", [blockquote_preview(str(exc), 500)]), section("跟踪", [bullet("ID", trace, code=False)])]), auto_delete=0)
-            self.spawn_task(_runner())
-
     # ── 消息工具 ──
 
     async def safe_reply(self, event, text: str, auto_delete: int | None = None, prefer_edit: bool = True) -> None:
-        # 从 general 插件配置读取超时参数
         gcfg = self.plugin_manager.get_plugin_config_file("general", {})
         panel_ttl = int(gcfg.get("panel_auto_delete_seconds", 45))
         recycle_ttl = int(gcfg.get("recycle_command_seconds", 8))
@@ -287,8 +319,6 @@ class AdminApp:
                     rok, rmsg = self.plugin_manager.reload_plugin(name)
                     reload_results.append(f"{'✔' if rok else '✖'} {name}")
                 self.logger.info("自动重载 %d 个插件: %s", len(changed), changed)
-
-            # Parse git output into clean summary
             raw = result.detail or ""
             pull_rows = []
             for line in raw.split("\n"):
@@ -297,33 +327,26 @@ class AdminApp:
                     continue
                 if line.startswith("[core]"):
                     txt = line.replace("[core]", "").strip()
-                    if "Already up to date" in txt or "already up to date" in txt.lower():
+                    if "already up to date" in txt.lower():
                         pull_rows.append(bullet("核心仓库", "已是最新", code=False))
-                    elif "Updating" in txt or "file changed" in txt or "files changed" in txt:
-                        pull_rows.append(bullet("核心仓库", "已更新", code=False))
                     else:
-                        pull_rows.append(bullet("核心仓库", txt, code=False))
+                        pull_rows.append(bullet("核心仓库", "已更新", code=False))
                 elif line.startswith("[plugins]"):
                     txt = line.replace("[plugins]", "").strip()
-                    if "Already up to date" in txt or "already up to date" in txt.lower():
+                    if "already up to date" in txt.lower():
                         pull_rows.append(bullet("插件仓库", "已是最新", code=False))
-                    elif "file changed" in txt or "files changed" in txt:
-                        pull_rows.append(bullet("插件仓库", "已更新", code=False))
                     else:
-                        pull_rows.append(bullet("插件仓库", txt, code=False))
+                        pull_rows.append(bullet("插件仓库", "已更新", code=False))
             if not pull_rows:
                 pull_rows.append(bullet("结果", "已是最新", code=False))
-
             secs = [section("仓库状态", pull_rows)]
             if reload_results:
                 secs.append(section(f"自动重载 · {len(changed)} 个插件", reload_results))
             elif ok and not changed:
                 secs.append(section("插件", ["无文件变更，无需重载。"]))
-
             footer = None
             if ok and not changed:
                 footer = f"<i>如有核心代码变更，请执行 <code>{escape(self.config.cmd_prefix)}restart</code></i>"
-
             if rt:
                 await self.edit_message_by_id(rt, panel("TG-Radar · 更新" + ("完成" if ok else "失败"), secs, footer))
         elif job.kind == "restart_services" and rt:
