@@ -10,12 +10,13 @@
 
 [![Version](https://img.shields.io/badge/v7.0-58a6ff?style=flat-square&label=version)](https://github.com/chenmo8848/TG-Radar)&nbsp;
 [![Python](https://img.shields.io/badge/3.10+-3776AB?style=flat-square&logo=python&logoColor=white&label=python)](https://python.org)&nbsp;
+[![Docker](https://img.shields.io/badge/supported-2496ED?style=flat-square&logo=docker&logoColor=white&label=docker)](https://www.docker.com)&nbsp;
 [![Telethon](https://img.shields.io/badge/async-26A5E4?style=flat-square&logo=telegram&logoColor=white&label=telethon)](https://github.com/LonamiWebs/Telethon)&nbsp;
 [![License](https://img.shields.io/badge/MIT-3da639?style=flat-square&label=license)](LICENSE)
 
 <br/>
 
-[**快速开始**](#-快速开始) · [**核心特性**](#-核心特性) · [**插件系统**](#-插件系统) · [**命令手册**](#%EF%B8%8F-命令手册) · [📦 **插件仓库 →**](https://github.com/chenmo8848/TG-Radar-Plugins)
+[**快速开始**](#-快速开始) · [**Docker 部署**](#-docker-部署) · [**核心特性**](#-核心特性) · [**插件系统**](#-插件系统) · [**命令手册**](#%EF%B8%8F-命令手册) · [📦 **插件仓库 →**](https://github.com/chenmo8848/TG-Radar-Plugins)
 
 </div>
 
@@ -23,16 +24,27 @@
 
 ## 🚀 快速开始
 
+> [!TIP]
+> 推荐使用 **Docker 部署**，无需安装任何依赖，一条命令完成全部流程。
+> 传统部署方式请参考下方折叠内容。
+
+### Docker 一键部署（推荐）
+
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/chenmo8848/TG-Radar/main/docker-install.sh)
+```
+
+> 全新 Linux 服务器以 root 执行即可，自动完成：
+> `安装 Docker` → `拉取仓库` → `配置凭据` → `构建镜像` → `Telegram 授权` → `首次同步` → `启动服务`
+
+<details>
+<summary>📋 <b>传统部署（systemd）</b></summary>
+
 ```bash
 bash <(curl -sL https://raw.githubusercontent.com/chenmo8848/TG-Radar/main/install.sh)
 ```
 
-> [!TIP]
-> 全新 VPS（Ubuntu / Debian）以 root 执行即可，自动完成全部流程：
-> `安装依赖` → `拉取仓库` → `创建环境` → `Telegram 授权` → `首次同步` → `启动服务`
-
-<details>
-<summary>📋 <b>手动部署</b></summary>
+或手动部署：
 
 ```bash
 git clone https://github.com/chenmo8848/TG-Radar.git && cd TG-Radar
@@ -41,9 +53,67 @@ cp config.example.json config.json && nano config.json
 PYTHONPATH=src venv/bin/python3 src/bootstrap_session.py
 PYTHONPATH=src venv/bin/python3 src/sync_once.py
 bash deploy.sh install-services
-systemctl start tg-radar-admin tg-radar-core
+systemctl start tg-radar
 ```
 </details>
+
+---
+
+## 🐳 Docker 部署
+
+### 一键安装
+
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/chenmo8848/TG-Radar/main/docker-install.sh)
+```
+
+### 手动安装
+
+```bash
+# 1. 拉取仓库
+git clone https://github.com/chenmo8848/TG-Radar.git && cd TG-Radar
+git clone https://github.com/chenmo8848/TG-Radar-Plugins.git plugins-external/TG-Radar-Plugins
+
+# 2. 配置 API 凭据
+cp config.example.json config.json
+nano config.json  # 填入 api_id 和 api_hash
+
+# 3. 构建镜像
+docker compose build
+
+# 4. 授权 Telegram（交互式，需输入手机号和验证码）
+docker compose run --rm tg-radar auth
+
+# 5. 首次同步
+docker compose run --rm tg-radar sync
+
+# 6. 启动服务
+docker compose up -d
+```
+
+### 容器管理
+
+```
+docker compose up -d          启动服务
+docker compose down           停止服务
+docker compose restart        重启服务
+docker compose logs -f        查看实时日志
+docker compose ps             查看运行状态
+```
+
+### 数据持久化
+
+| 挂载 | 路径 | 说明 |
+|:--|:--|:--|
+| Named Volume | `tg-radar-runtime` | 数据库、会话、日志（SQLite 安全） |
+| Bind Mount | `./config.json` | 核心配置 |
+| Bind Mount | `./configs/` | 插件配置 |
+| Bind Mount | `./src/` | 核心代码（支持 `-update` 热更新） |
+| Bind Mount | `./plugins-external/` | 插件代码（支持 `-update` 热更新） |
+
+### 更新方式
+
+在 Telegram 收藏夹中发送 `-update`，容器内自动 `git pull` 拉取最新代码并热重载，无需重建镜像。
 
 ---
 
@@ -73,6 +143,7 @@ systemctl start tg-radar-admin tg-radar-core
 |:--|:--|:--|
 | 🧩 | **全解耦插件** | 所有功能为独立插件，独立配置 `configs/name.json`、独立日志、独立生命周期 |
 | ⚡ | **高性能** | 预检前置 → 99% 消息零 API 调用跳过，命中后懒加载，钩子 `asyncio.gather` 并行 |
+| 🐳 | **Docker 支持** | 一键脚本部署，Named Volume 保障 SQLite 安全，`-update` 容器内热更新 |
 | 🔄 | **三层同步** | 🟢 实时（分组变动事件 ~3s） · 🔵 手动（`-sync`） · ⚪ 定时（每日自动） |
 | 🛡 | **稳定保障** | Session 自愈 · 错误熔断（连续失败自动停用） · 异常隔离不影响其他插件 |
 | 🔌 | **Plugin SDK** | `from tgr.plugin_sdk import PluginContext` — 一行 import 开发插件 |
@@ -198,12 +269,27 @@ def setup(ctx: PluginContext):
 
 | 命令 | 说明 |
 |:--|:--|
-| `-restart` | 重启双服务 |
+| `-restart` | 重启服务 |
 | `-update` | 拉取更新 + 自动重载 |
 | *(转发消息到收藏夹)* | 自动识别群 ID |
 </details>
 
 ### 终端管理
+
+<details>
+<summary><b>Docker 部署</b></summary>
+
+```
+docker compose up -d          启动服务
+docker compose down           停止服务
+docker compose restart        重启服务
+docker compose logs -f        查看实时日志
+docker compose ps             查看运行状态
+```
+</details>
+
+<details>
+<summary><b>传统部署（systemd）</b></summary>
 
 ```
 TR              交互菜单          TR logs admin   Admin 日志
@@ -211,6 +297,7 @@ TR status       服务状态          TR logs core    Core 日志
 TR restart      重启              TR update       拉取更新
 TR doctor       环境自检          TR reauth       重新授权
 ```
+</details>
 
 ---
 
@@ -250,11 +337,14 @@ TG-Radar/
 ├── src/tgr/
 │   ├── plugin_sdk.py        ★ 插件 SDK
 │   ├── core/plugin_system.py  插件引擎
-│   ├── admin_service.py     Admin 服务
-│   ├── core_service.py      Core 服务
+│   ├── app.py               主应用
 │   └── ...
 ├── plugins-external/        外部插件仓库
-├── install.sh               一键部署
+├── Dockerfile               Docker 镜像定义
+├── docker-compose.yml       Docker 编排配置
+├── docker-entrypoint.sh     Docker 入口脚本
+├── docker-install.sh        Docker 一键部署
+├── install.sh               传统一键部署
 └── deploy.sh                终端管理器
 ```
 </details>
@@ -286,7 +376,7 @@ TG-Radar/
 
 [**Core**](https://github.com/chenmo8848/TG-Radar) · [**Plugins**](https://github.com/chenmo8848/TG-Radar-Plugins)
 
-<sub>Built with Telethon · SQLite WAL · APScheduler</sub>
+<sub>Built with Telethon · SQLite WAL · APScheduler · Docker</sub>
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:1a1b27,50:0d1117,100:161b22&height=80&section=footer&fontSize=0" width="100%"/>
 
