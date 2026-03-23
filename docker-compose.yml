@@ -1,0 +1,29 @@
+services:
+  tg-radar:
+    build: .
+    container_name: tg-radar
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    volumes:
+      # 核心代码 + .git (可写, 支持容器内 -update 命令 git pull)
+      - ./src:/app/src
+      - ./.git:/app/.git
+      # Named volume for runtime (SQLite-safe)
+      - tg-radar-runtime:/app/runtime
+      # Host config → seed path; entrypoint copies to /app/config.json
+      - ./config.json:/app/config-host/config.json:ro
+      # Plugin configs
+      - ./configs:/app/configs
+      # Plugins (可写, 支持 git pull 热更新)
+      - ./plugins-external:/app/plugins-external
+      # Seed existing host runtime data on first launch
+      - ./runtime:/app/runtime-host:ro
+    environment:
+      - TZ=Asia/Shanghai
+      # 如果没有 config.json，可通过环境变量自动生成：
+      # - API_ID=12345678
+      # - API_HASH=your_api_hash_here
+
+volumes:
+  tg-radar-runtime:

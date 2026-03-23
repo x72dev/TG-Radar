@@ -149,9 +149,16 @@ def save_config_data(work_dir: Path, data: dict[str, Any]) -> Path:
     normalized = dict(PUBLIC_DEFAULT_CONFIG)
     normalized.update(data)
     payload = {k: normalized[k] for k in PUBLIC_DEFAULT_CONFIG.keys()}
+    content = json.dumps(payload, ensure_ascii=False, indent=4) + "\n"
     tmp = config_path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=4) + "\n", encoding="utf-8")
-    tmp.replace(config_path)
+    tmp.write_text(content, encoding="utf-8")
+    try:
+        tmp.replace(config_path)
+    except OSError:
+        # Docker bind-mounted files don't support atomic rename;
+        # fall back to direct in-place write.
+        config_path.write_text(content, encoding="utf-8")
+        tmp.unlink(missing_ok=True)
     return config_path
 
 
