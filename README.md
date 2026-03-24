@@ -2,7 +2,6 @@
 
 <img src="docs/banner.svg" alt="TG-Radar" width="100%" style="max-width: 800px; margin-bottom: 20px;" />
 
-[![Release](https://img.shields.io/github/v/release/x72dev/TG-Radar?style=flat-square&color=black)](https://github.com/x72dev/TG-Radar/releases)
 [![Python](https://img.shields.io/badge/Python-3.10+-black?style=flat-square&logo=python)](https://python.org)
 [![Docker](https://img.shields.io/badge/Docker-Native-black?style=flat-square&logo=docker)](https://www.docker.com)
 [![License](https://img.shields.io/badge/License-MIT-black?style=flat-square)](LICENSE)
