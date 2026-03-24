@@ -1,24 +1,18 @@
-<div align="center">
+# TG-Radar
 
-<img src="docs/banner.svg" alt="TG-Radar" width="100%" style="max-width: 800px; margin-bottom: 20px;" />
+> **企业级 Telegram 事件监听与高并发预警路由引擎**
+> 
+> 基于完全解耦的单核异步架构，在接入层即刻阻断噪音数据。专为高并发、低延迟环境设计的现代化监控基座。
 
-[![Python](https://img.shields.io/badge/Python-3.10+-black?style=flat-square&logo=python)](https://python.org)
-[![Docker](https://img.shields.io/badge/Docker-Native-black?style=flat-square&logo=docker)](https://www.docker.com)
-[![License](https://img.shields.io/badge/License-MIT-black?style=flat-square)](LICENSE)
-
-**企业级 Telegram 事件监听与高并发预警路由引擎**
-
-[**快速部署**](#-快速部署) • [**架构概览**](#-系统架构) • [**插件生态**](https://github.com/x72dev/TG-Radar-Plugins) • [**命令参考**](#-控制台指令)
+[快速部署](#🚀-快速部署) • [系统架构](#🏗-系统架构) • [插件生态](https://github.com/x72dev/TG-Radar-Plugins) • [控制台指令](#🔌-控制台指令)
 
 ---
-
-</div>
 
 ## 📌 核心定位
 
 TG-Radar 并非传统的单体 Userbot 脚本，而是一个专为**高并发、低延迟**环境设计的现代化监控基座。它采用前置预检漏斗（Pre-check Funnel）架构，在底层直接阻断 99% 的噪音数据，彻底消除无效的 API 开销。
 
-系统通过完全解耦的**单进程异步引擎**与**插件化架构**，将繁重的业务逻辑与底层通信剥离，实现了真正的毫秒级热重载（Hot-Reload）与零停机更新。
+系统通过完全解耦的**单核异步引擎**与**插件化架构**，将繁重的业务逻辑与底层通信剥离，实现了真正的毫秒级热重载（Hot-Reload）与零停机更新。
 
 ## ✨ 技术特性
 
@@ -63,7 +57,7 @@ bash <(curl -sL https://raw.githubusercontent.com/x72dev/TG-Radar/main/install.s
 
 ## 🏗 系统架构
 
-TG-Radar 采用高内聚的异步单进程设计。以下模型图展示了基于 `asyncio` 事件循环的数据流转机制：
+TG-Radar 采用高内聚的异步单核设计。以下模型图展示了基于 `asyncio` 事件循环的数据流转机制：
 
 ```mermaid
 graph TD
@@ -118,9 +112,7 @@ graph TD
 
 > **深入插件生态**：系统内置基础管控模块，更复杂的路由与业务分析，请参阅 [TG-Radar 官方插件集市](https://github.com/x72dev/TG-Radar-Plugins)。
 
-## ⚖️ 声明与协议
-
-本项目基于 [MIT License](LICENSE) 许可协议开源。
+## ⚖️ 声明
 
 **核心免责条款**：  
 TG-Radar 仅作为底层技术研究与企业内部自动化运维的测试工具。我们不对因不当使用导致的账号封禁、数据损毁或任何衍生法律后果承担责任。使用者应当自觉遵守 Telegram 服务条款（TOS）及部署所在地的法律法规。严禁将本系统应用于任何违规数据爬取、骚扰或灰黑产业务。
