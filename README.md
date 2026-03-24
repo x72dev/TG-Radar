@@ -1,19 +1,17 @@
 <div align="center">
 
-# TG-Radar
-
-**企业级 Telegram 事件监听与高并发预警路由引擎**
+<img src="docs/banner.svg" alt="TG-Radar" width="100%" style="max-width: 800px; margin-bottom: 20px;" />
 
 [![Release](https://img.shields.io/github/v/release/x72dev/TG-Radar?style=flat-square&color=black)](https://github.com/x72dev/TG-Radar/releases)
 [![Python](https://img.shields.io/badge/Python-3.10+-black?style=flat-square&logo=python)](https://python.org)
 [![Docker](https://img.shields.io/badge/Docker-Native-black?style=flat-square&logo=docker)](https://www.docker.com)
 [![License](https://img.shields.io/badge/License-MIT-black?style=flat-square)](LICENSE)
 
+**企业级 Telegram 事件监听与高并发预警路由引擎**
+
 [**快速部署**](#-快速部署) • [**架构概览**](#-系统架构) • [**插件生态**](https://github.com/x72dev/TG-Radar-Plugins) • [**命令参考**](#-控制台指令)
 
 ---
-
-<img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExYnJtdjA3bnE2d3c1YnhyaDBxMTh5YW1wdWhsYzUwcGJrYjd1cTVheSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/L1R1tvI9svkIWwpVYr/giphy.gif" alt="System Preview" width="100%" style="max-width: 800px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); margin: 20px 0;"/>
 
 </div>
 
