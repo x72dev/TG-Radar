@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/banner.svg" alt="TG-Radar Dynamic Banner" width="100%" style="max-width: 800px; margin-bottom: 24px;" />
+
 # TG-Radar
 
 **下一代 Telegram 事件路由与高并发监控引擎** <br />
