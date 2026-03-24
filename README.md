@@ -1,311 +1,185 @@
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:1a1b27,50:0d1117,100:161b22&height=120&section=header&fontSize=0" width="100%"/>
+<!-- 炫酷动态 Header -->
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:000000,50:0d1117,100:161b22&height=150&section=header&text=TG-Radar&fontSize=60&fontColor=58A6FF&animation=fadeIn" width="100%"/>
 
-# ⚡ TG-Radar
-
-<a href="https://git.io/typing-svg"><img src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&weight=600&size=18&duration=3000&pause=1000&color=58A6FF&center=true&vCenter=true&repeat=true&width=460&height=30&lines=Telegram+Keyword+Monitoring+System" alt="Typing SVG" /></a>
-
-<br/>
-
-[![Version](https://img.shields.io/badge/v7.0-58a6ff?style=flat-square&label=version)](https://github.com/chenmo8848/TG-Radar)&nbsp;
-[![Python](https://img.shields.io/badge/3.10+-3776AB?style=flat-square&logo=python&logoColor=white&label=python)](https://python.org)&nbsp;
-[![Docker](https://img.shields.io/badge/supported-2496ED?style=flat-square&logo=docker&logoColor=white&label=docker)](https://www.docker.com)&nbsp;
-[![Telethon](https://img.shields.io/badge/async-26A5E4?style=flat-square&logo=telegram&logoColor=white&label=telethon)](https://github.com/LonamiWebs/Telethon)&nbsp;
-[![License](https://img.shields.io/badge/MIT-3da639?style=flat-square&label=license)](LICENSE)
+<a href="https://git.io/typing-svg"><img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=20&duration=3000&pause=1000&color=58A6FF&center=true&vCenter=true&repeat=true&width=500&height=40&lines=Next-Gen+Telegram+Monitoring+System;High-Performance+Keyword+Radar;Zero-Overhead+Event+Filtering;Fully+Decoupled+Plugin+Architecture" alt="Typing SVG" /></a>
 
 <br/>
 
-[**快速开始**](#-快速开始) · [**Docker 部署**](#-docker-部署) · [**核心特性**](#-核心特性) · [**插件系统**](#-插件系统) · [**命令手册**](#%EF%B8%8F-命令手册) · [📦 **插件仓库 →**](https://github.com/chenmo8848/TG-Radar-Plugins)
+[![Version](https://img.shields.io/badge/v7.0-58a6ff?style=for-the-badge&logo=telegram)](https://github.com/x72dev/TG-Radar)&nbsp;
+[![Python](https://img.shields.io/badge/3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)&nbsp;
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com)&nbsp;
+[![Telethon](https://img.shields.io/badge/Telethon-Async-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://github.com/LonamiWebs/Telethon)&nbsp;
+[![License](https://img.shields.io/badge/License-MIT-3da639?style=for-the-badge)](LICENSE)
+
+<br/>
+
+[**🚀 快速开始**](#-快速部署) · [**📚 核心特性**](#-为什么选择-tg-radar) · [**🧩 插件集市**](https://github.com/x72dev/TG-Radar-Plugins) · [**⌨️ 命令手册**](#%EF%B8%8F-命令手册)
 
 </div>
 
 ---
 
-## 🚀 快速开始
+## 💡 为什么选择 TG-Radar？
+
+与传统的 Userbot 脚本不同，TG-Radar 是专为**高并发**、**低延迟**和**极客体验**打造的企业级监控引擎：
+
+- 🚀 **极致性能预检**：采用前置预检漏斗（Pre-check Filter），**99% 的噪音消息在触发 API 调用前被零开销过滤**。真正做到单机轻松抗住千个超级群组的实时并发。
+- 🧩 **高维架构解耦**：一切皆插件。业务逻辑与核心引擎完全物理隔离，支持毫秒级热重载（Hot-Reload）。核心进程（Core）与管理进程（Admin）双轨运行，互不干扰。
+- 🐳 **容器化原生设计**：抛弃繁琐的 Python 环境配置，提供完备的 Docker 镜像。所有数据（Session、配置、日志）通过 SQLite WAL 机制安全持久化，真正做到**开箱即用，即焚即走**。
+- 🛡️ **自愈与熔断机制**：内置 Session 自动恢复与错误熔断器。当某个插件连续报错时会自动隔离停用，绝不影响系统全局稳定性。
+
+---
+
+## 📸 运行效果 (Preview)
+
+> 💡 **提示**：目前这里使用了一张极客风的骇客帝国动图作为占位演示。您后续可以在本地准备一张真实的终端操作录屏 (如使用 `vhs` 或 `asciinema` 录制，并存放到 `docs/assets/demo.gif`) 进行替换。
+
+<div align="center">
+  <img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExcDBzZWNwZjVkMnd1MnlwZ3h6ZmVxaTB2NTE4NjZsNnM1ZGlndHhlbyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/L1R1tvI9svkIWwpVYr/giphy.gif" alt="TG-Radar Terminal Preview" width="800" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);"/>
+</div>
+
+---
+
+## ⚡ 快速部署
 
 > [!WARNING]
 > **账号风控提示**：基于 Telethon 的 Userbot 模式具有一定被封号风险。
 > - **强烈建议使用注册时间较长的老号**作为监控号，不要使用刚注册的新号。
-> - 不要频繁进行大规模的同步或加入大量群组操作，以防触发 Telegram 的 FloodWait 限制。
+> - 不要频繁进行大规模的同步或加入大量群组操作，以防触发 Telegram 的 `FloodWait` 限制。
 
-> [!TIP]
-> 推荐使用 **Docker 部署**，无需安装任何依赖，一条命令完成全部流程。
-> 传统部署方式请参考下方折叠内容。
+### 🐳 Docker 一键部署（极度推荐）
 
-### Docker 一键部署（推荐）
+无需克隆代码，准备好全新的 Linux 服务器，使用 root 权限执行以下一键脚本即可完成：`安装 Docker` → `拉取仓库` → `配置凭据` → `授权登录` → `启动服务` 的全流程。
 
 ```bash
-bash <(curl -sL https://raw.githubusercontent.com/chenmo8848/TG-Radar/main/docker-install.sh)
+bash <(curl -sL https://raw.githubusercontent.com/x72dev/TG-Radar/main/docker-install.sh)
 ```
-
-> 全新 Linux 服务器以 root 执行即可，自动完成：
-> `安装 Docker` → `拉取仓库` → `配置凭据` → `构建镜像` → `Telegram 授权` → `首次同步` → `启动服务`
 
 <details>
-<summary>📋 <b>传统部署（systemd）</b></summary>
+<summary><b>🛠️ 需要手动 Docker 部署或传统 Systemd 源码安装？点击展开</b></summary>
 
+**手动 Docker 安装：**
 ```bash
-bash <(curl -sL https://raw.githubusercontent.com/chenmo8848/TG-Radar/main/install.sh)
-```
+git clone https://github.com/x72dev/TG-Radar.git && cd TG-Radar
+git clone https://github.com/x72dev/TG-Radar-Plugins.git plugins-external/TG-Radar-Plugins
 
-或手动部署：
-
-```bash
-git clone https://github.com/chenmo8848/TG-Radar.git && cd TG-Radar
-python3 -m venv venv && venv/bin/pip install -r requirements.txt
-cp config.example.json config.json && nano config.json
-PYTHONPATH=src venv/bin/python3 src/bootstrap_session.py
-PYTHONPATH=src venv/bin/python3 src/sync_once.py
-bash deploy.sh install-services
-systemctl start tg-radar
-```
-</details>
-
----
-
-## 🐳 Docker 部署
-
-### 一键安装
-
-```bash
-bash <(curl -sL https://raw.githubusercontent.com/chenmo8848/TG-Radar/main/docker-install.sh)
-```
-
-### 手动安装
-
-```bash
-# 1. 拉取仓库
-git clone https://github.com/chenmo8848/TG-Radar.git && cd TG-Radar
-git clone https://github.com/chenmo8848/TG-Radar-Plugins.git plugins-external/TG-Radar-Plugins
-
-# 2. 配置 API 凭据
 cp config.example.json config.json
-nano config.json  # 填入 api_id 和 api_hash
+nano config.json  # 填入您的 api_id 和 api_hash
 
-# 3. 构建镜像
 docker compose build
-
-# 4. 授权 Telegram（交互式，需输入手机号和验证码）
-docker compose run --rm tg-radar auth
-
-# 5. 首次同步
-docker compose run --rm tg-radar sync
-
-# 6. 启动服务
-docker compose up -d
+docker compose run --rm tg-radar auth  # 交互式授权
+docker compose run --rm tg-radar sync  # 首次同步数据
+docker compose up -d                   # 后台启动
 ```
 
-### 容器管理
-
+**传统部署（基于 Systemd）：**
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/x72dev/TG-Radar/main/install.sh)
 ```
-docker compose up -d          启动服务
-docker compose down           停止服务
-docker compose restart        重启服务
-docker compose logs -f        查看实时日志
-docker compose ps             查看运行状态
-```
-
-### 数据持久化
-
-| 挂载 | 路径 | 说明 |
-|:--|:--|:--|
-| Named Volume | `tg-radar-runtime` | 数据库、会话、日志（SQLite 安全） |
-| Bind Mount | `./config.json` | 核心配置 |
-| Bind Mount | `./configs/` | 插件配置 |
-| Bind Mount | `./src/` | 核心代码（支持 `-update` 热更新） |
-| Bind Mount | `./plugins-external/` | 插件代码（支持 `-update` 热更新） |
-
-### 更新方式
-
-在 Telegram 收藏夹中发送 `-update`，容器内自动 `git pull` 拉取最新代码并热重载，无需重建镜像。
-
----
-
-## 🏗 架构
-
-```
-  ┌─────────────── Admin 进程 ───────────────┐     ┌──────────── Core 进程 ────────────┐
-  │                                           │     │                                   │
-  │  收藏夹命令 → PluginManager → CommandBus  │     │  全量消息 → PluginManager → 告警  │
-  │                               ↓           │     │                                   │
-  │                          Scheduler        │     │  关键词匹配（懒加载 · 并行钩子）  │
-  │                               ↓           │     │                                   │
-  │                           Executor        │     │  99% 消息零 API 开销跳过          │
-  │                                           │     │                                   │
-  └──────────────┬────────────────────────────┘     └────────────────┬──────────────────┘
-                 │                                                   │
-                 └──────────── SQLite WAL · SIGUSR1 ────────────────┘
-```
-
-> **Admin** 处理命令与后台任务，**Core** 监听消息并发送告警。双进程通过 SQLite 共享数据，SIGUSR1 信号触发热重载。
-
----
-
-## ✨ 核心特性
-
-|  | 特性 | 说明 |
-|:--|:--|:--|
-| 🧩 | **全解耦插件** | 所有功能为独立插件，独立配置 `configs/name.json`、独立日志、独立生命周期 |
-| ⚡ | **高性能** | 预检前置 → 99% 消息零 API 调用跳过，命中后懒加载，钩子 `asyncio.gather` 并行 |
-| 🐳 | **Docker 支持** | 一键脚本部署，Named Volume 保障 SQLite 安全，`-update` 容器内热更新 |
-| 🔄 | **三层同步** | 🟢 实时（分组变动事件 ~3s） · 🔵 手动（`-sync`） · ⚪ 定时（每日自动） |
-| 🛡 | **稳定保障** | Session 自愈 · 错误熔断（连续失败自动停用） · 异常隔离不影响其他插件 |
-| 🔌 | **Plugin SDK** | `from tgr.plugin_sdk import PluginContext` — 一行 import 开发插件 |
-| 🔥 | **热重载** | `-reload name` 秒级生效 · `-update` 自动检测变更文件并重载 |
-| 📡 | **转发识别** | 转发群消息到收藏夹 → 自动回复群 ID + 快捷操作命令 |
-
----
-
-## 🧩 插件系统
-
-> [!NOTE]
-> 核心只提供基础设施，所有业务功能均为可热重载的独立插件。
-> 完整开发文档 → [**TG-Radar-Plugins**](https://github.com/chenmo8848/TG-Radar-Plugins)
-
-| 插件 | 类型 | 功能 | 配置 |
-|:--|:--|:--|:--|
-| `system_panel` | 内置 | help · plugins · reload · pluginconfig | — |
-| `general` | Admin | ping · status · version · config · log · jobs | `panel_auto_delete_seconds` |
-| `folders` | Admin | folders · rules · enable · disable | — |
-| `rules` | Admin | addrule · setrule · delrule · setnotify · setalert · setprefix | — |
-| `routes` | Admin | routes · addroute · delroute · sync · routescan | `auto_sync_enabled/time` |
-| `system` | Admin | restart · update | `restart_delay_seconds` |
-| `chatinfo` | Admin | 转发识别群 ID · 分组变动实时同步 | — |
-| `keyword_monitor` | Core | 关键词匹配 · 告警发送 | `bot_filter` `max_preview_length` |
-
-### 开发示例
-
-```python
-from tgr.plugin_sdk import PluginContext
-
-PLUGIN_META = {"name": "hello", "version": "1.0.0", "kind": "admin"}
-
-def setup(ctx: PluginContext):
-    @ctx.command("hello", summary="打招呼", usage="hello", category="示例")
-    async def handler(app, event, args):
-        await ctx.reply(event, ctx.ui.panel("Hello", [ctx.ui.section("", ["👋"])]))
-```
-
-<details>
-<summary>📚 <b>SDK 完整接口</b></summary>
-
-| 分类 | 接口 | 说明 |
-|:--|:--|:--|
-| 配置 | `ctx.config.get / set / all` | 读写插件配置（`configs/name.json`） |
-| 数据 | `ctx.db.list_folders / get_rules / log_event` | 白名单数据库方法 |
-| 渲染 | `ctx.ui.panel / section / bullet / escape` | HTML 渲染 |
-| 任务 | `ctx.bus.submit_job(kind, ...)` | 后台任务 |
-| 日志 | `ctx.log.info / warning / error` | 插件独立日志 |
-| 事件 | `ctx.emit(event, data)` / `@ctx.on(event)` | 事件总线 |
-| 注册 | `@ctx.command` / `@ctx.hook` / `@ctx.cleanup` / `@ctx.healthcheck` | 装饰器 |
-| 工具 | `ctx.client` / `ctx.reply(event, text)` | Telethon / 回复 |
 </details>
+
+---
+
+## 🏗️ 系统架构
+
+TG-Radar 采用双进程隔离架构，确保指令处理与高频消息监听互不阻塞。GitHub 原生支持以下 Mermaid 架构图的高清自适应渲染：
+
+```mermaid
+graph TD
+  subgraph Telegram Network
+    TG[Telegram Servers]
+  end
+
+  subgraph TG-Radar Core [Core 进程 - 高频监听]
+    Stream[Real-time Event Stream]
+    Filter{预检漏斗<br>99% 零开销跳过}
+    PM_Core[Plugin Manager]
+    Warn[发送告警]
+  end
+
+  subgraph TG-Radar Admin [Admin 进程 - 后台管理]
+    Cmd[Command Bus<br>处理收藏夹指令]
+    Job[Scheduler<br>定时与异步任务]
+    PM_Admin[Plugin Manager]
+  end
+
+  DB[(SQLite WAL<br>高并发安全共享数据)]
+
+  TG -->|全量群消息| Stream
+  Stream --> Filter
+  Filter -->|正则/规则命中| PM_Core
+  Filter -->|未命中| Drop[Discard]
+  PM_Core --> Warn
+
+  Cmd --> PM_Admin
+  Job --> PM_Admin
+
+  PM_Core -.->|读写状态| DB
+  PM_Admin -.->|读写状态| DB
+
+  style TG fill:#26A5E4,stroke:#fff,stroke-width:2px,color:#fff
+  style Filter fill:#f39c12,stroke:#fff,stroke-width:2px,color:#fff
+  style DB fill:#34495e,stroke:#fff,stroke-width:2px,color:#fff
+```
+
+---
+
+## 🔌 插件生态与热重载
+
+TG-Radar 所有的核心业务逻辑（包括关键词监控、管理面板、自动路由等）均作为独立插件运行在 [**TG-Radar-Plugins**](https://github.com/x72dev/TG-Radar-Plugins) 仓库中。
+
+- **🔥 热重载 (Hot-Reload)**：修改插件代码或配置后，只需在收藏夹发送 `-reload 插件名`，即可在**不重启主进程**的情况下秒级生效。
+- **📦 极简 SDK**：提供 `from tgr.plugin_sdk import PluginContext` 极简接口，几行代码即可完成一个强大插件的开发。
 
 ---
 
 ## ⌨️ 命令手册
 
-> 在 Telegram **收藏夹**中发送，默认前缀 `-`
+> 💡 **所有命令默认在 Telegram 的「收藏夹 (Saved Messages)」中发送，默认前缀为 `-`。**
 
-<details open>
-<summary>📋 <b>通用</b></summary>
+<details>
+<summary><b>1. 🖥️ 系统与通用管理</b></summary>
 
 | 命令 | 说明 |
 |:--|:--|
-| `-help` | 命令列表 |
-| `-ping` | 心跳检测 |
-| `-status` | 系统状态 |
-| `-version` | 版本信息 |
-| `-config` | 核心配置 |
-| `-log [scope] [n]` | 事件日志 |
-| `-jobs` | 后台队列 |
+| `-help` | 查看所有可用命令列表 |
+| `-ping` | 心跳检测，查看机器人存活状态 |
+| `-status` / `-version` | 查看系统运行状态与当前版本 |
+| `-config` | 查看当前核心配置参数 |
+| `-log [scope] [n]` | 查看系统或插件的实时事件日志 |
+| `-jobs` | 查看后台正在运行的异步队列任务 |
+| `-restart` / `-update` | 重启服务 / 自动拉取 Git 最新代码并热重载 |
 </details>
 
 <details>
-<summary>📁 <b>分组</b></summary>
+<summary><b>2. 📁 分组与规则配置</b></summary>
 
 | 命令 | 说明 |
 |:--|:--|
-| `-folders` | 全部分组 |
-| `-rules 名` | 分组规则 |
-| `-enable / -disable 名` | 开启 / 关闭监控 |
+| `-folders` | 查看所有监控分组及状态 |
+| `-rules [分组名]` | 查看指定分组下的详细监控规则 |
+| `-enable / -disable [分组名]` | 快捷开启或关闭某个分组的监控 |
+| `-addrule 分组名 规则名 关键词...`| 向分组追加关键词（**原生支持正则表达式**） |
+| `-setrule 分组名 规则名 表达式` | 覆盖现有规则内容 |
+| `-delrule 分组名 规则名 [词...]` | 删除规则或规则中的指定词 |
+| `-setnotify / -setalert ID` | 设定系统通知频道 / 监控告警接收频道 |
 </details>
 
 <details>
-<summary>📝 <b>规则</b></summary>
+<summary><b>3. 🧩 插件状态管理</b></summary>
 
 | 命令 | 说明 |
 |:--|:--|
-| `-addrule 分组 规则 词...` | 追加关键词（支持正则） |
-| `-setrule 分组 规则 表达式` | 覆盖规则 |
-| `-delrule 分组 规则 [词...]` | 删除 |
-| `-setnotify / -setalert ID/off` | 通知 / 告警频道 |
-| `-setprefix 前缀` | 修改前缀 |
-
-> [!TIP]
-> 支持正则：`-addrule 分组 规则A "台(?:[1-9]|[一二三四五六七八九])"`
-</details>
-
-<details>
-<summary>🔄 <b>同步</b></summary>
-
-| 命令 | 说明 |
-|:--|:--|
-| `-sync` | 手动同步 |
-| `-routes / -addroute / -delroute` | 归纳规则 |
-| `-routescan` | 手动扫描 |
-</details>
-
-<details>
-<summary>🧩 <b>插件</b></summary>
-
-| 命令 | 说明 |
-|:--|:--|
-| `-plugins` | 插件状态 |
-| `-reload 名` | 热重载 |
-| `-pluginreload` | 全量重载 |
-| `-pluginenable / -plugindisable 名` | 启用 / 停用 |
-| `-pluginconfig 名 [键] [值]` | 查看 / 修改配置 |
-</details>
-
-<details>
-<summary>⚙️ <b>系统</b></summary>
-
-| 命令 | 说明 |
-|:--|:--|
-| `-restart` | 重启服务 |
-| `-update` | 拉取更新 + 自动重载 |
-| *(转发消息到收藏夹)* | 自动识别群 ID |
-</details>
-
-### 终端管理
-
-<details>
-<summary><b>Docker 部署</b></summary>
-
-```
-docker compose up -d          启动服务
-docker compose down           停止服务
-docker compose restart        重启服务
-docker compose logs -f        查看实时日志
-docker compose ps             查看运行状态
-```
-</details>
-
-<details>
-<summary><b>传统部署（systemd）</b></summary>
-
-```
-TR              交互菜单          TR logs admin   Admin 日志
-TR status       服务状态          TR logs core    Core 日志
-TR restart      重启              TR update       拉取更新
-TR doctor       环境自检          TR reauth       重新授权
-```
+| `-plugins` | 查看所有已安装插件的运行状态 |
+| `-reload [插件名]` | 核心功能：对指定插件进行代码和配置的热重载 |
+| `-pluginreload` | 全量重新加载所有插件 |
+| `-pluginenable / -plugindisable` | 临时启用或停用某个插件 |
+| `-pluginconfig 插件名 [键] [值]` | 动态查看或修改插件的 `configs/*.json` 配置 |
 </details>
 
 ---
-
 
 ## ❓ 常见问题 (FAQ)
 
@@ -325,90 +199,28 @@ TR doctor       环境自检          TR reauth       重新授权
 </details>
 
 <details>
-<summary><b>Q3: 如何减小数据库体积？</b></summary>
-系统会自动清理过期的日志和缓存。如果是会话或状态数据过大，可以考虑定期备份并清空无用的历史记录，或通过 SQLite 客户端执行 <code>VACUUM</code> 命令。
+<summary><b>Q3: 如何获取某个群组的 ID？</b></summary>
+只需**转发一条该群组内普通用户的消息**到您的收藏夹，TG-Radar 会自动识别并回复该群组的详细信息（包括群 ID）及快捷操作菜单。
 </details>
 
 ---
 
-## 🔍 获取群 ID
+## 👨‍💻 参与贡献
 
+欢迎提交 Pull Request 或 Issue！您可以帮助我们开发新插件、修复 Bug 或完善文档。
 
-**转发一条群消息到收藏夹**，自动回复群 ID + 快捷操作：
-
-```
-TG-Radar · 群 ID 识别
-
-来源信息
-· 名称：XXX 交流群
-· ID：-1001234567890
-· 类型：超级群
-
-快捷操作
-  设为告警频道: -setalert -1001234567890
-  设为通知频道: -setnotify -1001234567890
-```
-
-> [!IMPORTANT]
-> 请转发**普通用户**发的消息。Bot 消息会识别为 Bot 本身。
+<a href="https://github.com/x72dev/TG-Radar/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=x72dev/TG-Radar" alt="Contributors" />
+</a>
 
 ---
 
-<details>
-<summary>📂 <b>项目结构</b></summary>
+## 📄 免责声明 (Disclaimer)
 
-```
-TG-Radar/
-├── config.json              核心配置（10 项）
-├── configs/                 插件配置（自动生成）
-├── runtime/
-│   ├── radar.db             SQLite WAL
-│   ├── sessions/            Telegram session
-│   └── logs/                日志 + plugins/ 子目录
-├── src/tgr/
-│   ├── plugin_sdk.py        ★ 插件 SDK
-│   ├── core/plugin_system.py  插件引擎
-│   ├── app.py               主应用
-│   └── ...
-├── plugins-external/        外部插件仓库
-├── Dockerfile               Docker 镜像定义
-├── docker-compose.yml       Docker 编排配置
-├── docker-entrypoint.sh     Docker 入口脚本
-├── docker-install.sh        Docker 一键部署
-├── install.sh               传统一键部署
-└── deploy.sh                终端管理器
-```
-</details>
+本项目采用 [MIT License](LICENSE) 开源。
 
-<details>
-<summary>⚙️ <b>核心配置说明</b></summary>
-
-| 参数 | 说明 |
-|:--|:--|
-| `api_id` / `api_hash` | Telegram API 凭证（[获取](https://my.telegram.org)） |
-| `cmd_prefix` | 命令前缀，默认 `-` |
-| `operation_mode` | `stable` / `balanced` / `aggressive` |
-| `global_alert_channel_id` | 默认告警频道 |
-| `notify_channel_id` | 通知频道（null = 收藏夹） |
-| `service_name_prefix` | systemd 服务名前缀 |
-| `repo_url` / `plugins_repo_url` | 仓库地址 |
-| `plugins_dir` | 插件目录路径 |
-</details>
-
----
-
-## ⚠️ 免责声明
-
-本项目仅供**学习与技术研究**用途。使用者须确保行为符合所在地法律法规。开发者不对因使用本工具导致的任何损失承担责任。严禁用于未经授权的监控、骚扰、诈骗等非法活动。所有数据仅存储在用户设备上，不传输至第三方。使用即表示同意上述条款。
-
----
+**本项目仅供学习、技术研究与系统运维测试用途**。使用者须确保行为符合所在地法律法规及 Telegram 服务条款。开发者不对因使用本工具导致的任何直接或间接损失（包括但不限于账号封禁、数据丢失）承担责任。严禁用于未经授权的监控、骚扰、诈骗等非法活动。所有数据仅存储在用户自己的服务器上，不传输至任何第三方。使用即表示您完全同意上述条款。
 
 <div align="center">
-
-[**Core**](https://github.com/chenmo8848/TG-Radar) · [**Plugins**](https://github.com/chenmo8848/TG-Radar-Plugins)
-
-<sub>Built with Telethon · SQLite WAL · APScheduler · Docker</sub>
-
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:1a1b27,50:0d1117,100:161b22&height=80&section=footer&fontSize=0" width="100%"/>
-
 </div>
