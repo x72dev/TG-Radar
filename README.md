@@ -24,6 +24,11 @@
 
 ## 🚀 快速开始
 
+> [!WARNING]
+> **账号风控提示**：基于 Telethon 的 Userbot 模式具有一定被封号风险。
+> - **强烈建议使用注册时间较长的老号**作为监控号，不要使用刚注册的新号。
+> - 不要频繁进行大规模的同步或加入大量群组操作，以防触发 Telegram 的 FloodWait 限制。
+
 > [!TIP]
 > 推荐使用 **Docker 部署**，无需安装任何依赖，一条命令完成全部流程。
 > 传统部署方式请参考下方折叠内容。
@@ -301,7 +306,33 @@ TR doctor       环境自检          TR reauth       重新授权
 
 ---
 
+
+## ❓ 常见问题 (FAQ)
+
+<details>
+<summary><b>Q1: 遇到 <code>Session expired / revoked</code> 怎么办？</b></summary>
+这通常是因为您在其他设备上主动终止了该会话，或者 Telegram 官方重置了您的登录状态。您需要重新进行授权：<br>
+执行 <code>docker compose run --rm tg-radar auth</code>，按照提示重新输入手机号和验证码即可覆盖旧会话。
+</details>
+
+<details>
+<summary><b>Q2: 为什么我设置了关键词，但没有收到告警？</b></summary>
+排查步骤：<br>
+1. 确认监控群组是否已在分组中，并且该分组的状态为 <b>启用</b>（<code>-folders</code> 查看）。<br>
+2. 确认告警频道已正确设置（<code>-config</code> 查看 <code>global_alert_channel_id</code>）。<br>
+3. 检查正则表达式是否正确匹配。可以使用简单的词语测试。<br>
+4. 查看日志（<code>-log core</code>）确认是否有拦截记录或报错。
+</details>
+
+<details>
+<summary><b>Q3: 如何减小数据库体积？</b></summary>
+系统会自动清理过期的日志和缓存。如果是会话或状态数据过大，可以考虑定期备份并清空无用的历史记录，或通过 SQLite 客户端执行 <code>VACUUM</code> 命令。
+</details>
+
+---
+
 ## 🔍 获取群 ID
+
 
 **转发一条群消息到收藏夹**，自动回复群 ID + 快捷操作：
 
