@@ -13,20 +13,22 @@
 
 ---
 
+<img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExYnJtdjA3bnE2d3c1YnhyaDBxMTh5YW1wdWhsYzUwcGJrYjd1cTVheSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/L1R1tvI9svkIWwpVYr/giphy.gif" alt="System Preview" width="100%" style="max-width: 800px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); margin: 20px 0;"/>
+
 </div>
 
 ## 📌 核心定位
 
 TG-Radar 并非传统的单体 Userbot 脚本，而是一个专为**高并发、低延迟**环境设计的现代化监控基座。它采用前置预检漏斗（Pre-check Funnel）架构，在底层直接阻断 99% 的噪音数据，彻底消除无效的 API 开销。
 
-系统通过完全解耦的**双核进程**与**插件化架构**，将繁重的业务逻辑与底层通信剥离，实现了真正的毫秒级热重载（Hot-Reload）与零停机更新。
+系统通过完全解耦的**单进程异步引擎**与**插件化架构**，将繁重的业务逻辑与底层通信剥离，实现了真正的毫秒级热重载（Hot-Reload）与零停机更新。
 
 ## ✨ 技术特性
 
 - **极致过滤性能**：全量事件流在接入层即刻接受轻量级矩阵评估，未命中规则的消息被瞬间丢弃。
-- **双轨异步架构**：Core 进程专注于高频消息处理，Admin 进程负责调度与后台指令，确保终端指令响应不会阻塞实时监听。
+- **单核异步并发**：基于 `asyncio` 与单路 `TelegramClient` 驱动，所有的命令响应与海量消息监听均在一个无阻塞的事件循环中极速流转。资源占用极低。
 - **零停机热重载**：无论是更新正则规则、替换业务逻辑，还是部署全新插件，均无需重启容器。
-- **并发状态安全**：底层采用 SQLite WAL 模式，确保跨进程、高并发场景下的数据强一致性与绝对隔离。
+- **状态安全与持久化**：底层采用 SQLite WAL 模式，保障异步环境下的数据读写强一致性，并能完美承载海量日志。
 
 ## 🚀 快速部署
 
@@ -64,39 +66,50 @@ bash <(curl -sL https://raw.githubusercontent.com/x72dev/TG-Radar/main/install.s
 
 ## 🏗 系统架构
 
-TG-Radar 采用严格的职责分离设计。以下模型图展示了系统内部的数据流转与状态同步机制：
+TG-Radar 采用高内聚的异步单进程设计。以下模型图展示了基于 `asyncio` 事件循环的数据流转机制：
 
 ```mermaid
 graph TD
   %% 现代极简配色
   classDef core fill:#111,stroke:#333,stroke-width:1px,color:#fff
-  classDef admin fill:#fafafa,stroke:#e5e5e5,stroke-width:1px,color:#111
+  classDef app fill:#fafafa,stroke:#e5e5e5,stroke-width:1px,color:#111
   classDef db fill:#f4f4f5,stroke:#e4e4e7,stroke-width:1px,color:#18181b
 
-  Stream[Telegram 实时事件流] --> Filter{前置预检漏斗}
+  Network[Telegram Network] --> EventLoop
   
-  subgraph Core [Core 监听进程]
-    Filter -->|规则命中| PM_Core[Plugin Manager]
-    Filter -->|未命中| Drop[抛弃]
-    PM_Core --> Alert[告警分发]
+  subgraph TG-Radar App [单进程 Asyncio 事件循环]
+    direction TB
+    EventLoop((Telegram Client)) 
+    
+    Filter{前置预检漏斗<br>99% 噪音丢弃}
+    
+    PM[统一 Plugin Manager]
+    CmdBus[命令总线]
+    Scheduler[后台异步调度器]
+    
+    EventLoop -->|新消息事件| Filter
+    EventLoop -->|收藏夹指令| CmdBus
+    
+    Filter -->|正则命中| PM
+    CmdBus --> PM
+    Scheduler -->|触发| PM
+    
+    PM -->|API 回调| EventLoop
   end
 
-  subgraph Admin [Admin 管理进程]
-    Cmd[收藏夹指令总线] --> PM_Admin[Plugin Manager]
-    Job[后台定时调度器] --> PM_Admin
-  end
+  PM -.->|持久化状态| DB[(SQLite WAL)]
 
-  PM_Core -.->|状态同步| DB[(SQLite WAL 共享存储)]
-  PM_Admin -.->|状态同步| DB
-
-  class Core core
-  class Admin admin
+  class EventLoop core
+  class Filter app
+  class PM app
+  class CmdBus app
+  class Scheduler app
   class DB db
 ```
 
 ## 🔌 控制台指令
 
-业务逻辑的流转由插件全面接管。您只需在 Telegram 的 **收藏夹 (Saved Messages)** 中发送指令，即可完成对整个集群的调度。
+业务逻辑的流转由插件全面接管。您只需在 Telegram 的 **收藏夹 (Saved Messages)** 中发送指令，即可完成对整个系统的调度。
 
 | 核心指令 | 释义与用途 |
 | :--- | :--- |

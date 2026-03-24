@@ -6,7 +6,7 @@
     "operation_mode": "stable",
     "global_alert_channel_id": null,
     "notify_channel_id": null,
-    "repo_url": "https://github.com/chenmo8848/TG-Radar.git",
-    "plugins_repo_url": "https://github.com/chenmo8848/TG-Radar-Plugins.git",
+    "repo_url": "https://github.com/x72dev/TG-Radar.git",
+    "plugins_repo_url": "https://github.com/x72dev/TG-Radar-Plugins.git",
     "plugins_dir": "./plugins-external/TG-Radar-Plugins/plugins"
 }
