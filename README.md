@@ -2,8 +2,6 @@
 
 <img src="docs/banner.svg" alt="TG-Radar Banner" width="100%" style="max-width: 800px; margin-bottom: 20px;" />
 
-# ⚡ TG-Radar
-
 **下一代 Telegram 智能风控与高并发预警路由引擎**
 
 [![Version](https://img.shields.io/badge/Version-v7.0-58a6ff?style=for-the-badge&logo=telegram)](https://github.com/x72dev/TG-Radar)
