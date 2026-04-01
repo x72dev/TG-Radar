@@ -26,6 +26,7 @@ from .executors import JobResult
 from .logger import setup_logger
 from .scheduler import AdminScheduler
 from .sync_logic import RouteReport, SyncReport, scan_auto_routes, sync_dialog_folders
+from .telegram_client_factory import build_telegram_client
 from .telegram_utils import blockquote_preview, bullet, dialog_filter_title, escape, format_duration, html_code, panel, section, shorten_path, soft_kv
 from .version import __version__
 
@@ -124,7 +125,7 @@ class RadarApp:
         pid_file = self.config.runtime_dir / "radar.pid"
         pid_file.write_text(str(os.getpid()))
 
-        async with TelegramClient(str(self.config.session_path), self.config.api_id, self.config.api_hash) as client:
+        async with build_telegram_client(self.config) as client:
             self.client = client
             client.parse_mode = "html"
             me = await client.get_me()
