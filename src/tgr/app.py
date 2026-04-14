@@ -492,6 +492,13 @@ class RadarApp:
                     + (f"\n  异常: {escape(rec.last_error[:80])}" if rec.last_error else "")
                 )
             secs.append(section(title, rows or ["<i>无</i>"]))
+        external_issues = [entry for entry in self.plugin_manager.load_errors if entry.startswith("external_plugins:")]
+        if external_issues:
+            issues = []
+            for entry in external_issues:
+                _, _, detail = entry.partition(": ")
+                issues.append(f"⚠️ {escape(detail or entry)}")
+            secs.append(section("加载告警", issues))
         return panel("TG-Radar · 插件状态", secs, f"<i><code>{escape(self.config.cmd_prefix)}reload 名称</code> 重载单个插件</i>")
 
     async def _send_startup(self) -> None:

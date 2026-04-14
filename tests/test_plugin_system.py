@@ -11,11 +11,40 @@ if str(SRC) not in sys.path:
 
 if "telethon" not in sys.modules:
     telethon_stub = types.ModuleType("telethon")
-    telethon_stub.types = types.SimpleNamespace(DialogFilter=type("DialogFilter", (), {}), PeerChannel=type("PeerChannel", (), {}))
-    telethon_stub.utils = types.SimpleNamespace(get_peer_id=lambda peer, add_mark=True: 0, resolve_id=lambda chat_id: (abs(int(chat_id)), None))
+    telethon_stub.TelegramClient = type("TelegramClient", (), {})
+    telethon_stub.events = types.SimpleNamespace(NewMessage=lambda *args, **kwargs: None)
+    telethon_stub.functions = types.SimpleNamespace(messages=types.SimpleNamespace(GetDialogFiltersRequest=object, UpdateDialogFilterRequest=object))
+    telethon_stub.types = types.SimpleNamespace(
+        DialogFilter=type("DialogFilter", (), {}),
+        PeerChannel=type("PeerChannel", (), {}),
+        InputDialogPeer=type("InputDialogPeer", (), {}),
+    )
+    telethon_stub.utils = types.SimpleNamespace(
+        get_peer_id=lambda peer, add_mark=True: 0,
+        resolve_id=lambda chat_id: (abs(int(chat_id)), None),
+        get_input_peer=lambda peer: peer,
+    )
     sys.modules["telethon"] = telethon_stub
 
+if "apscheduler" not in sys.modules:
+    apscheduler_stub = types.ModuleType("apscheduler")
+    apscheduler_stub.__path__ = []
+    apscheduler_schedulers_stub = types.ModuleType("apscheduler.schedulers")
+    apscheduler_schedulers_stub.__path__ = []
+    apscheduler_asyncio_stub = types.ModuleType("apscheduler.schedulers.asyncio")
+    apscheduler_asyncio_stub.AsyncIOScheduler = type("AsyncIOScheduler", (), {})
+    apscheduler_triggers_stub = types.ModuleType("apscheduler.triggers")
+    apscheduler_triggers_stub.__path__ = []
+    apscheduler_cron_stub = types.ModuleType("apscheduler.triggers.cron")
+    apscheduler_cron_stub.CronTrigger = type("CronTrigger", (), {})
+    sys.modules["apscheduler"] = apscheduler_stub
+    sys.modules["apscheduler.schedulers"] = apscheduler_schedulers_stub
+    sys.modules["apscheduler.schedulers.asyncio"] = apscheduler_asyncio_stub
+    sys.modules["apscheduler.triggers"] = apscheduler_triggers_stub
+    sys.modules["apscheduler.triggers.cron"] = apscheduler_cron_stub
+
 from tgr.core.plugin_system import PluginManager
+from tgr.app import RadarApp
 
 
 class DummyConfig:
@@ -101,6 +130,39 @@ class PluginManagerExternalPluginsCheckTests(unittest.TestCase):
             self.assertTrue(any(str(plugins_root) in issue for issue in issues))
             self.assertTrue(any(str(plugins_root) in line for line in captured.output))
             self.assertNotIn("demo", manager.plugins)
+
+
+class PluginManagerPanelRenderingTests(unittest.TestCase):
+    def test_render_plugins_message_shows_load_errors_section(self) -> None:
+        fake_app = types.SimpleNamespace(
+            plugin_manager=types.SimpleNamespace(
+                load_errors=[
+                    "external_plugins: 外部插件目录为空或不可见：/bad/path。请检查 plugins_dir 配置、Docker 挂载或软链接目标。"
+                ],
+                list_plugins=lambda kind=None: [],
+            ),
+            config=types.SimpleNamespace(cmd_prefix="-"),
+        )
+
+        rendered = RadarApp.render_plugins_message(fake_app)
+
+        self.assertIn("加载告警", rendered)
+        self.assertIn("外部插件目录为空或不可见", rendered)
+        self.assertIn("/bad/path", rendered)
+
+    def test_render_plugins_message_ignores_non_external_stale_load_errors(self) -> None:
+        fake_app = types.SimpleNamespace(
+            plugin_manager=types.SimpleNamespace(
+                load_errors=["admin: demo: stale failure"],
+                list_plugins=lambda kind=None: [],
+            ),
+            config=types.SimpleNamespace(cmd_prefix="-"),
+        )
+
+        rendered = RadarApp.render_plugins_message(fake_app)
+
+        self.assertNotIn("加载告警", rendered)
+        self.assertNotIn("stale failure", rendered)
 
 
 if __name__ == "__main__":
