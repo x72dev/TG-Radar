@@ -374,6 +374,30 @@ class PluginManager:
             return []
         return sorted([p for p in target.rglob("*.py") if p.is_file() and p.name != "__init__.py"])
 
+    def _record_load_issue(self, prefix: str, message: str, *, level: str = "error") -> str:
+        entry = f"{prefix}: {message}"
+        if entry not in self.load_errors:
+            self.load_errors.append(entry)
+        log_fn = getattr(_log, level, _log.error)
+        log_fn(message)
+        return entry
+
+    def validate_external_plugins(self) -> list[str]:
+        prefix = "external_plugins"
+        self.load_errors = [e for e in self.load_errors if not e.startswith(f"{prefix}:")]
+        root = self._external_root()
+        if not root.exists():
+            message = f"外部插件目录不存在或不可见：{root}。请检查 plugins_dir 配置、Docker 挂载或软链接目标。"
+            self._record_load_issue(prefix, message)
+            return [message]
+        admin_files = self._iter_plugin_files(root, "admin")
+        core_files = self._iter_plugin_files(root, "core")
+        if admin_files or core_files:
+            return []
+        message = f"外部插件目录为空或不可见：{root}。请检查 plugins_dir 配置、Docker 挂载或软链接目标。"
+        self._record_load_issue(prefix, message)
+        return [message]
+
     def _load_single(self, file_path: Path, kind: str, source: str) -> PluginRecord:
         plugin_name = file_path.stem
         record = PluginRecord(name=plugin_name, kind=kind, source=source, path=str(file_path))

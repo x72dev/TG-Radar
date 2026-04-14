@@ -135,6 +135,7 @@ class RadarApp:
             # 加载插件
             self.plugin_manager.load_admin_plugins()
             self.plugin_manager.load_core_plugins()
+            self.plugin_manager.validate_external_plugins()
             await self.plugin_manager.run_healthchecks()
 
             # 初始化运行时状态
