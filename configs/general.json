@@ -1,0 +1,5 @@
+{
+    "_plugin": "general",
+    "panel_auto_delete_seconds": 45,
+    "recycle_command_seconds": 8
+}

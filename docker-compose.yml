@@ -9,6 +9,8 @@ services:
       # 核心代码 + .git (可写, 支持容器内 -update 命令 git pull)
       - ./src:/app/src
       - ./.git:/app/.git
+      - /usr/share/zoneinfo/Asia/Shanghai:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
       # Named volume for runtime (SQLite-safe)
       - tg-radar-runtime:/app/runtime
       # Host config → seed path; entrypoint copies to /app/config.json

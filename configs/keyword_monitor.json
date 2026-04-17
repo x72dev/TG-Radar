@@ -1,0 +1,7 @@
+{
+    "_plugin": "keyword_monitor",
+    "bot_filter": true,
+    "max_preview_length": 760,
+    "sender_id_blacklist": [],
+    "sender_name_keywords": []
+}
